@@ -32,10 +32,19 @@ concurrency:
 
 jobs:
   subir:
-    # ⚠️ A CADÊNCIA NASCE DESLIGADA. Um workflow agendado vale a partir do momento em que chega ao
-    # GitHub — e compilar custa minutos (em dobro, em repositório privado). Enquanto o projeto não
-    # estreia, o agendado só roda com a variável do repositório OFICINA_ROBO_LIGADO = true. O botão
-    # (workflow_dispatch) funciona sempre: é uma pessoa pedindo.
+    # ⚠️ A CADÊNCIA NASCE DESLIGADA, e continua desligada por DECISÃO, não por custo.
+    #
+    # Até 24/09/2026 havia dois motivos: o projeto não ter estreado e os minutos de Windows contarem
+    # em dobro no plano grátis quando o repositório é privado. O segundo morreu na estreia — em
+    # repositório público os minutos de Actions são gratuitos. Sobrou o primeiro, que é de quem
+    # decide: ligar a cadência é pôr a variável do repositório OFICINA_ROBO_LIGADO = true.
+    #
+    # O botão (workflow_dispatch) funciona sempre: é uma pessoa pedindo.
+    #
+    # ⚠️ Auditado em 24/09/2026, no dia em que o repositório virou público: este workflow NÃO tem
+    # gatilho acionável por terceiro (não existe `pull_request` nem `pull_request_target` aqui), as
+    # actions estão fixadas por SHA, e a entrada do botão passa por variável de ambiente em vez de
+    # ser interpolada dentro do `run:`. Um fork ou um PR de fora não executa nada disto.
     if: github.event_name == 'workflow_dispatch' || vars.OFICINA_ROBO_LIGADO == 'true'
     runs-on: windows-2022
     timeout-minutes: 300

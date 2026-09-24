@@ -113,6 +113,12 @@ Release com os mesmos dois arquivos — nunca publica a Release sozinho.
 Este repositório **não** conhece conta, bucket nem token de ninguém: essas três variáveis são
 sempre a única fonte da verdade sobre onde publicar.
 
+⚠️ **E é por isso que o binário publicado nas Releases NÃO se atualiza sozinho.** O `product.json`
+deste repositório traz `updateUrl` na lista `__remover`: a compilação pública sai sem endereço de
+atualização, de propósito — um binário distribuído que busca pacote num servidor é um caminho por
+onde se entrega código a quem baixou. O mecanismo acima existe inteiro no código e funciona; quem
+compila a própria versão aponta o `updateUrl` para o próprio servidor e passa a ter o canal.
+
 ## Conferir se o build presta
 
 ```
