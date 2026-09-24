@@ -2,6 +2,57 @@
 
 Todas as mudanças que importam, versão a versão. Datas em dd/mm/aaaa.
 
+## [v25] — 24/09/2026 — **primeira versão pública**
+
+A primeira versão baixável, e o primeiro dia em que este repositório existe em público. Ela
+carrega tudo que foi construído até aqui; as seções abaixo contam versão a versão.
+
+**O que esta versão traz de novo:**
+
+- **O tema escuro ficou legível.** Ele estava mais escuro que o Dark Modern do VS Code em três
+  lugares ao mesmo tempo, e o resultado era texto difícil de ler. Agora o alvo é medido, não
+  estimado: o texto da interface saiu de 0,41 para 0,60 de luminância (o do VS Code é 0,60), a
+  barra de título e a de status deixaram de ser quase preto (0,0041 → 0,0075) e o painel da
+  conversa subiu para o mesmo plano do editor, em vez de ficar um degrau abaixo dele. A escada de
+  superfícies foi **derivada**: cada plano é o primeiro valor que se separa do anterior por
+  ΔL* ≥ 3 no CIELAB.
+  *Custo, declarado:* o fundo ficou menos profundo; o contraste do texto no editor caiu de 11,41:1
+  para 10,75:1, e segue em AAA.
+- **A largura reservada por ícone na barra de cima passou a derivar do tamanho do ícone**
+  (patch `0027`), em vez de ser um número fixo. Com ícones de 20 px e o valor antigo de 26,
+  fixar um quinto ícone empurrava dois para o menu de transbordo.
+
+## [não lançado] — V24, os quatro ajustes de quem usa (24/09/2026)
+
+- Os **ícones da barra de cima ficaram maiores** (16 → 20 px), e os de fonte crescem junto com os
+  de imagem (patches `0025` e `0026`).
+- **Clicar de novo no mesmo ícone agora fecha** a barra lateral, como na barra de atividades
+  original (patch `0024`). O comportamento existia no núcleo e deixou de ser alcançado quando a
+  barra mudou de lugar.
+- **A barra da direita não guarda mais a vista de tokens**: a conversa fica no centro.
+- **O contador de tokens fica ligado o tempo inteiro**, com três estados — os números, um traço
+  com zero quando não há conversa, e um traço com interrogação quando a medição falhou. O
+  terceiro existe para não anunciar "zero" quando a verdade é "não sei".
+
+## [não lançado] — V23, uma conversa só (24/09/2026)
+
+O atalho e o botão de boas-vindas passaram a abrir a **conversa da extensão oficial**, caindo no
+painel próprio apenas quando ela não responde. Antes o programa abria numa conversa e a tecla
+abria outra, as duas com o mesmo nome. Nada foi removido.
+
+## [não lançado] — V22, o rótulo que não empurra (23/09/2026)
+
+O item de texto vivo da barra de título passou a cortar com `…` ao atingir 30% da largura da
+janela (patch `0023`), em vez de empurrar o resto da barra.
+
+## [não lançado] — V21, a barra de cima e os ajustes da conversa (21-22/09/2026)
+
+- **Os ícones foram para a barra de título** (patch `0022`).
+- O menu `…` da fileira de abas e o "Maximize Group" atrás dele saíram.
+- Os grupos de editor não são mais travados pela extensão da conversa (patch `0021`).
+- Na conversa: o "Untitled" da segunda linha saiu, a caixa de digitar encostou no rodapé
+  (16 px → 4 px) e o seletor de modos ficou só com `Plan` e `Bypass permissions`.
+
 ## [não lançado] — V20, a barra de cima e a faixa do limite (21/09/2026)
 
 **A conversa do produto passou a ser a da extensão oficial do Claude Code.** O painel próprio

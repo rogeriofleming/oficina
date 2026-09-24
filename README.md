@@ -24,8 +24,19 @@ certificado de assinatura de código pago (um custo recorrente que não compensa
 porquê no histórico do projeto) — não porque haja algo errado com o arquivo. A integridade de
 cada atualização é conferida por hash (SHA-256) antes de instalar, com ou sem esse aviso.
 
-A OFICINA se atualiza sozinha: ao abrir, ela avisa quando existe uma versão nova, baixa e
-confere o pacote antes de aplicar.
+**Esta versão não se atualiza sozinha.** Para trocar de versão, baixe o instalador novo na aba
+[Releases](../../releases) e abra — ele instala por cima, sem desinstalar a anterior. O canal de
+atualização automática existe no código (o programa sabe avisar, baixar e conferir o hash antes de
+aplicar), mas ele depende de um endereço de distribuição, e esta compilação sai sem nenhum: um
+binário público que busca atualização num servidor é um caminho por onde se entrega código a quem
+baixou, e isso não se abre sem assinatura.
+
+Cada Release traz, ao lado do instalador, o `.sha256.json` com o hash do arquivo. Para conferir no
+PowerShell:
+
+```powershell
+Get-FileHash .\OficinaSetup.exe -Algorithm SHA256
+```
 
 ## Primeiro uso
 
