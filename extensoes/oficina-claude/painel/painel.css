@@ -1,0 +1,1001 @@
+/*
+  A cara da conversa.
+
+  ⚠️ NENHUMA COR LITERAL AQUI, com uma exceção declarada no fim do arquivo. Tudo sai
+  das variáveis `--vscode-*`, que o nosso tema (identidade/gerar_temas.py) preenche.
+  O motivo é duplo e vale escrever: (1) o painel acompanha OFICINA Escuro e OFICINA
+  Claro sem manter uma segunda paleta que vai divergir da primeira; (2) o prompt da V2
+  proíbe inventar cor fora da paleta aprovada, e a única forma de garantir isso é não
+  ter onde escrever uma.
+
+  A escada de superfícies é a mesma que a revisão final mediu na V1: fundo do editor → a
+  bolha de quem fala → a caixa de escrever. Nada aqui inventa um plano novo.
+*/
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-editor-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  line-height: 1.55;
+}
+
+.miudo {
+  font-size: .85em;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ── A linha de estado, no pé: quem está logado, o modelo, o modo, o custo ─────
+   Não existe mais cabeçalho (ver o comentário no painel.html): a única barra acima da
+   conversa é a da aba do editor. Tudo o que morava no topo vive nesta linha. */
+
+/*
+  ⚠️ A COR É A DO TEXTO, NÃO A "DISCRETA". Medido em 10/09/2026, noite: o
+  `descriptionForeground` que a classe `.miudo` dá ficava em 4,17:1 no escuro e 3,59:1 no
+  claro sobre o fundo — abaixo dos 4,5:1 de texto pequeno, na linha que diz "ele vai me
+  perguntar antes de mexer?". O `foreground` dá 7,44:1 e 6,06:1. A hierarquia fica com o
+  tamanho da letra, não com uma cor que some.
+*/
+.linha-de-estado {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 2px 0;
+  min-width: 0;
+  color: var(--vscode-foreground);
+}
+.linha-de-estado .empurra { flex: 1 1 auto; }
+.linha-de-estado .modo { font-size: 1em; }
+.conta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+/* O E-MAIL APARECE COM PELO MENOS 8 LETRAS, OU DESCE PARA A LINHA DE BAIXO — nunca uma letra solta, e nada passa da
+   borda. Medido no executável, de 540 a 780 px de pé: entre 560 e ~720 px o e-mail encolhia até 3 px (sem
+   reticências: um "r" colado na borda) e, com agentes nos modos de texto comprido, a linha passava da borda (até 82 px
+   a 600 px) — só o pé de 506 px era medido. Agora a linha quebra quando precisa (em qualquer largura); o e-mail pega o
+   espaço livre antes do espaçador (peso 1000 contra 1), até o tamanho dele, e não fica abaixo de 8 letras: se não
+   couber assim, ele e o "Sair" descem juntos, e lá embaixo o e-mail aparece inteiro.
+   Custo: nessas larguras, com agentes ou modo comprido, o pé ganha uma segunda linha (a conta e o "Sair"). */
+.linha-de-estado { flex-wrap: wrap; row-gap: 2px; }
+.linha-de-estado .conta { flex: 1000 1 8ch; min-width: 8ch; max-width: max-content; }
+#sair { margin-left: auto; }
+/* Modelo e custo não quebram: "US$" numa linha e "0,19" na outra não é número que se leia.
+   Medido em 18/09/2026 com o painel a ~506 px, a largura normal ao lado da lateral e do editor.
+   Quem encolhe é o e-mail, com reticências. */
+.modelo, .custo { white-space: nowrap; flex: none; }
+/* O custo abre a vista de tokens (ver `painel.js`). Sublinhado só no foco/passagem: é número antes de ser link. */
+.custo:not(:empty) { cursor: pointer; border-radius: 3px; }
+.custo:not(:empty):hover, .custo:focus-visible { text-decoration: underline; outline: none; }
+
+/* Painel estreito: o rótulo do modo é o primeiro a sair — o seletor continua dizendo o
+   que acontece ("pergunta sempre"), então nada do que importa some. A 460 px ainda sobrava
+   rótulo com o pé já quebrando; a 560 px sai antes.
+   V14: a medida é a largura do PÉ (`@container`), não a da janela (`@media`). Dá no mesmo no painel real,
+   e o critério de tela, que estreita só o pé, passa a ver o que a pessoa vê. */
+.pe { container-type: inline-size; }
+@container (max-width: 560px) { .modo-rotulo { display: none; } }
+/* V15 — o botão do modelo ganhou o esforço ("Opus 5 (1M) · extra-alto" = 128 px, contra 60 do modelo sozinho), e a
+   506 px a linha estourava 55 px (medido). No pé estreito sai o " (1M)" do botão (ele continua na dica e na lista
+   do painel) e o espaço entre os itens cai de 10 para 5 px (com 6 px ainda passava 1 px — a folga que sobra é pequena). */
+@container (max-width: 560px) {
+  .modelo-contexto { display: none; }
+  .linha-de-estado { gap: 5px; }
+}
+
+/* O ponto de estado. É a única coisa da tela que diz, sem texto, se o programa está
+   ouvindo, pensando ou esperando você — e por isso ele muda de cor E de forma. */
+.ponto {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--vscode-descriptionForeground);
+  flex: none;
+}
+.ponto[data-estado="ociosa"]   { background: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+/* Parado, mas sem conta: nao e "tudo certo". A cor e a de aviso, a mesma da permissao esperando. */
+body[data-sem-login="sim"] .ponto[data-estado="ociosa"] { background: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); }
+.ponto[data-estado="pensando"] { background: var(--vscode-textLink-foreground); animation: pulsar 1.1s ease-in-out infinite; }
+/*
+  ⚠️ `editorWarning-foreground` e não `inputValidation-warningBorder`.
+  Visto no retrato de 10/09/2026: o segundo é `#f0d9a399` no nosso tema — 60% de
+  opacidade, pensado para BORDA de campo. Num ponto de 9 px isso vira cinza, e o
+  estado que mais importa da tela ("ele está esperando você decidir") ficava mudo.
+  O primeiro é a mesma família de cor, sólida.
+*/
+.ponto[data-estado="esperando_permissao"] {
+  background: var(--vscode-editorWarning-foreground, var(--vscode-inputValidation-warningForeground));
+  /* Um anel, para o estado de decisão ser o único ponto que "pesa" na tela. */
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vscode-editorWarning-foreground) 25%, transparent);
+}
+.ponto[data-estado="cancelando"] { background: var(--vscode-descriptionForeground); animation: pulsar .6s ease-in-out infinite; }
+.ponto[data-estado="erro"]     { background: var(--vscode-errorForeground); }
+
+@keyframes pulsar { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+.custo { font-variant-numeric: tabular-nums; }
+
+/* ── V14: o relógio do cache — anel + minutos até o cache da conversa vencer ──
+   Cores só do tema da OFICINA: o arco é a cor do texto, o trilho é a cor apagada
+   do tema, e vencido é a cor de aviso — a mesma da decisão esperando, porque é um "cuidado, custa mais".
+   ⚠️ O trilho é o círculo de referência: sem ele, 23m vira um "C" solto e o anel não diz quanto falta.
+   Com a cor de borda ele dava 1,23:1 (escuro) e 1,25:1 (claro) — invisível. A cor apagada dá 3,62:1 e
+   3,58:1 sobre o fundo da conversa (o piso do WCAG para gráfico é 3:1), e continua mais fraca que o arco.
+   ⚠️ O arco NÃO é a brasa. A brasa marca foco, item ativo, botão primário e cursor — e nada mais (topo do
+   `gerar_temas.py`); o arco fica à vista o tempo todo depois da primeira resposta, e com ele, o ícone dos agentes
+   e o Enviar eram três pontos quentes numa linha só. Na cor do texto: 7,44:1 (escuro) e 6,06:1 (claro). */
+.cache { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex: none; font-variant-numeric: tabular-nums; }
+.cache[hidden] { display: none; }
+.cache-anel { width: 14px; height: 14px; flex: none; }
+.cache-trilho, .cache-arco { fill: none; stroke-width: 2.25; }
+.cache-trilho { stroke: var(--vscode-disabledForeground); }
+.cache-arco { stroke: var(--vscode-foreground); stroke-linecap: round; }
+.cache[data-vencido="sim"] .cache-arco { display: none; }
+.cache[data-vencido="sim"] .cache-trilho { stroke: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); stroke-dasharray: 2 2; }
+.cache[data-vencido="sim"] .cache-minutos { color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); }
+
+/* ── V15: o botão do modelo e o painel de escolha (modelo + esforço) ──────────
+   O botão é texto até ser tocado: sem moldura em repouso, para o pé não virar uma fileira de caixas; a
+   borda aparece na passagem e no foco. O painel usa as cores de MENU do tema (a mesma família da lista do
+   editor), e o item em uso tem o fundo de seleção da lista — o laranja translúcido da OFICINA. */
+.modelo {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 1px 5px;
+  margin: 0 -5px;
+  cursor: pointer;
+}
+.modelo[hidden] { display: none; }
+.modelo:hover, .modelo[aria-expanded="true"] { border-color: var(--vscode-dropdown-border, var(--vscode-panel-border)); }
+.modelo:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+.pe { position: relative; }
+.seletor {
+  position: absolute;
+  left: 16px;
+  bottom: calc(100% - 4px);
+  width: min(420px, calc(100% - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 10;
+  padding: 6px;
+  border-radius: 8px;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+  box-shadow: 0 4px 16px var(--vscode-widget-shadow, transparent);
+  color: var(--vscode-foreground);
+}
+.seletor[hidden] { display: none; }
+.seletor-titulo {
+  font-size: .8em;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--vscode-foreground);
+  padding: 4px 8px 2px;
+}
+.seletor-lista { list-style: none; margin: 0 0 4px; padding: 0; outline: none; }
+.seletor-lista:focus-visible .seletor-item.ativo { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.seletor-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.seletor-item:hover { background: var(--vscode-list-hoverBackground); }
+.seletor-item[data-em-uso="sim"] { background: var(--vscode-list-activeSelectionBackground); }
+.seletor-textos { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.seletor-nome { font-weight: 600; }
+/* A cor é a do texto, não a "discreta" (4,17:1 no escuro — ver a linha de estado): a hierarquia fica no tamanho. */
+.seletor-descricao { font-size: .85em; color: var(--vscode-foreground); overflow-wrap: anywhere; }
+.seletor-marca { flex: none; width: 1em; text-align: center; color: var(--vscode-textLink-foreground); font-weight: 700; }
+
+.seletor-confirmar, .seletor-nota {
+  margin: 4px 2px 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+  background: var(--vscode-editor-background);
+  border-radius: 4px;
+  font-size: .9em;
+}
+.seletor-confirmar[hidden], .seletor-nota[hidden] { display: none; }
+.seletor-confirmar-texto { margin: 0 0 8px; }
+.seletor-confirmar-botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.seletor-botao {
+  font: inherit;
+  padding: 3px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: 1px solid var(--vscode-button-border, transparent);
+}
+.seletor-botao.secundario {
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  background: var(--vscode-button-secondaryBackground, transparent);
+}
+.seletor-botao:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+/* O esforço: cinco pontos numa linha, o atual cheio na cor de destaque. Os pontos que o modelo não aceita
+   nem aparecem (a linha encurta), e modelo sem esforço troca o controle por uma frase. */
+.esforco { border-top: 1px solid var(--vscode-menu-separatorBackground, var(--vscode-panel-border)); margin-top: 4px; padding-top: 4px; }
+.esforco-controle {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px 2px;
+  outline: none;
+  border-radius: 5px;
+}
+.esforco-controle[hidden] { display: none; }
+.esforco-controle:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.esforco-trilho {
+  position: absolute;
+  left: 22px; right: 22px; top: 12px;
+  height: 2px;
+  /* A linha que une os pontos: a mesma cor do contorno deles (com a de borda, 1,01:1 no escuro — cinco
+     bolinhas soltas, sem o trilho). */
+  background: var(--vscode-descriptionForeground);
+}
+.esforco-ponto {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 28px;
+  cursor: pointer;
+}
+.esforco-bolinha {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  border: 2px solid var(--vscode-descriptionForeground);
+}
+.esforco-ponto[data-atual="sim"] .esforco-bolinha { background: var(--vscode-textLink-foreground); border-color: var(--vscode-textLink-foreground); }
+.esforco-rotulo { font-size: .8em; white-space: nowrap; }
+.esforco-ponto[data-atual="sim"] .esforco-rotulo { font-weight: 600; }
+.esforco-sem, .esforco-aviso { margin: 4px 8px 6px; font-size: .85em; }
+.esforco-sem[hidden], .esforco-aviso[hidden] { display: none; }
+.esforco-aviso { color: var(--vscode-editorWarning-foreground, var(--vscode-foreground)); }
+
+/* ── O modo: o que ele faz antes de mexer nos arquivos ─────────────────────── */
+
+.modo-rotulo { white-space: nowrap; }
+
+.modo {
+  font: inherit;
+  font-size: .9em;
+  padding: 3px 6px;
+  border-radius: 5px;
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border));
+  cursor: pointer;
+}
+.modo:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+/*
+  Quando o agente pode agir sem perguntar, o seletor deixa de ser discreto.
+  Não é decoração: é o único lugar da tela que responde "ele vai me perguntar antes de
+  mexer?", e a pessoa precisa poder olhar de relance e ver a resposta a qualquer
+  momento — não só no instante em que trocou.
+*/
+.modo.sem-freio {
+  border-color: var(--vscode-inputValidation-warningBorder, var(--vscode-charts-yellow));
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+  font-weight: 600;
+}
+
+.aviso-modo {
+  align-self: stretch;
+  border-left: 3px solid var(--vscode-inputValidation-warningBorder, var(--vscode-charts-yellow));
+  background: var(--vscode-inputValidation-warningBackground, var(--vscode-editorWidget-background));
+  color: var(--vscode-inputValidation-warningForeground, var(--vscode-editor-foreground));
+  padding: 9px 13px;
+  border-radius: 4px;
+  font-size: .9em;
+}
+
+/* ── A conversa ────────────────────────────────────────────────────────────── */
+
+.conversa {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 20px 16px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vazio { margin: auto; text-align: center; max-width: 34ch; }
+.vazio-titulo { font-size: 1.05em; margin: 0 0 6px; }
+.vazio-linha { margin: 0; color: var(--vscode-descriptionForeground); font-size: .9em; }
+
+.fala { max-width: 100%; }
+
+.fala.de-voce {
+  align-self: flex-end;
+  max-width: 82%;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 10px 10px 2px 10px;
+  padding: 9px 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.fala.dele {
+  align-self: flex-start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* O cursor de digitação: mostra que a resposta ainda está vindo. É o que separa
+   "está escrevendo" de "travou" sem precisar de um texto dizendo isso. */
+.fala.dele.escrevendo::after {
+  content: '';
+  display: inline-block;
+  width: .5em; height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  background: var(--vscode-editorCursor-foreground, currentColor);
+  animation: piscar 1s steps(2, start) infinite;
+}
+@keyframes piscar { to { visibility: hidden; } }
+
+/* Ferramenta usada: uma linha discreta, não um bloco que rouba a leitura. */
+.ferramenta {
+  align-self: flex-start;
+  display: flex; align-items: baseline; gap: 8px;
+  font-size: .86em;
+  color: var(--vscode-descriptionForeground);
+  border-left: 2px solid var(--vscode-panel-border);
+  padding-left: 10px;
+}
+/* A brasa é só cursor, ativo, primário e foco (regra do gerar_temas.py). O nome da
+   ferramenta era `textLink` — um sexto ponto quente na tela (revisão de beleza, 10/09). */
+.ferramenta .nome { color: var(--vscode-foreground); }
+
+/* Arquivo citado: clicável, e parecendo clicável. */
+.arquivo {
+  color: var(--vscode-textLink-foreground);
+  cursor: pointer;
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+  background: none; border-width: 0 0 1px; padding: 0;
+  font: inherit;
+}
+.arquivo:hover { color: var(--vscode-textLink-activeForeground); }
+.arquivo:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+/* V3: a ficha do cartão de proposta — o arquivo e a linha do primeiro trecho, que levam ao diff. */
+.permissao .ficha { display: inline-block; margin: 2px 0 10px; font-family: var(--vscode-editor-font-family); }
+
+/* ── O pedido de permissão: a peça mais importante da tela ─────────────────── */
+
+/*
+  Ela é deliberadamente a coisa mais visível da conversa. Quem está lendo depressa
+  precisa PARAR aqui — é o único momento em que o programa vai mexer nos arquivos da
+  pessoa, e a decisão é dela. A borda de acento e o fundo próprio existem para isso,
+  não para enfeitar.
+*/
+.permissao {
+  align-self: stretch;
+  border: 1px solid var(--vscode-inputValidation-warningBorder, var(--vscode-focusBorder));
+  border-left-width: 3px;
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background);
+  padding: 12px 14px;
+}
+/*
+  O cartão respondido apaga — MENOS o veredito.
+
+  ⚠️ Medido na revisão de beleza da V3: o `.55` multiplicava o `descriptionForeground` do veredito e o
+  texto ficava em 1,94:1 sobre o cartão respondido — menos da metade do mínimo do WCAG, e é a única
+  linha da tela que diz se o arquivo da pessoa foi gravado ou não. A opacidade fica no cartão, e o
+  veredito é devolvido a 1 com a cor de texto normal (6,00:1 medido).
+  TROCA: o cartão velho deixa de apagar por inteiro — sobra uma linha acesa nele numa conversa longa.
+  É o preço de o registro do que aconteceu com o arquivo continuar legível.
+*/
+.permissao[data-respondida="sim"] { opacity: .55; border-left-color: var(--vscode-panel-border); }
+.permissao[data-respondida="sim"] .veredito { opacity: 1; color: var(--vscode-foreground); }
+.permissao .frase { font-weight: 600; margin: 0 0 4px; }
+/*
+  ⚠️ `foreground`, não `descriptionForeground`: com a segunda o par ficava em 3,36:1 (escuro) e 3,90:1
+  (claro), abaixo dos 4,5:1 do WCAG — e na V3 esta linha é a ÚNICA que explica que a decisão agora se
+  toma no editor, e não no cartão. É o mesmo conserto que a linha de estado recebeu na revisão da V2 e
+  que não tinha sido propagado para cá (revisão de beleza da V3).
+  TROCA: o detalhe deixa de ser "segunda camada" por cor; a hierarquia do cartão passa a depender do
+  peso da fonte, como já acontece na linha de estado.
+*/
+.permissao .detalhe {
+  margin: 0 0 10px;
+  font-size: .88em;
+  color: var(--vscode-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.permissao .comando {
+  font-family: var(--vscode-editor-font-family);
+  font-size: .88em;
+  background: var(--vscode-textCodeBlock-background);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /* O conteúdo vai inteiro (ver `cartaoDePermissao`): a caixa rola em vez de empurrar a
+     conversa para longe. */
+  max-height: 18em;
+  overflow: auto;
+}
+.permissao .botoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.permissao .veredito { font-size: .88em; color: var(--vscode-descriptionForeground); }
+
+/* ── V4: o comando — o cartão que vira execução ────────────────────────────── */
+
+/*
+  ⚠️ O cartão de comando NÃO ganha cor própria. A tentação era pintá-lo de "perigoso", já que
+  comando é a ação que mexe fora dos arquivos do projeto. Mas a tela já tem um único ponto quente
+  (a brasa) e um único sinal de aviso (a borda do cartão de permissão, que este herda): um terceiro
+  faria os três competirem, e o olho para de distinguir o que é urgente quando tudo é urgente.
+  O que separa este cartão dos outros é o que ele MOSTRA — a linha do comando, em fonte de código.
+*/
+
+/* A linha viva: "rodando…", o botão que para ESTE comando, e o caminho para o terminal. */
+.execucao {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  font-size: .88em;
+  color: var(--vscode-foreground);
+}
+.execucao .execucao-texto { font-variant-numeric: tabular-nums; }
+/* Terminou bem / mal / parado: a mesma leitura de relance do rodapé do terminal. Sem ícone
+   colorido a mais — o texto já traz ✓, ✕ ou ⏹, e a cor confirma o que o símbolo diz. */
+.execucao[data-fim="bem"] .execucao-texto { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+.execucao[data-fim="mal"] .execucao-texto { color: var(--vscode-errorForeground); }
+.execucao[data-fim="parado"] .execucao-texto { color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); }
+.execucao .botao { padding: 3px 10px; font-size: .95em; }
+
+/* O anel que gira enquanto o comando roda. É a única animação da tela além do ponto de estado e do
+   cursor de digitação — e ela existe porque um comando longo sem sinal de vida é indistinguível de
+   um comando travado. */
+.girando {
+  width: 12px; height: 12px; flex: none;
+  border: 2px solid var(--vscode-panel-border);
+  border-top-color: var(--vscode-textLink-foreground);
+  border-radius: 50%;
+  animation: girar .9s linear infinite;
+}
+@keyframes girar { to { transform: rotate(360deg); } }
+
+/* ── V4: o histórico dos comandos, no pé ───────────────────────────────────── */
+
+.historico { margin: 0 2px 6px; }
+.historico-botao {
+  font: inherit;
+  font-size: .85em;
+  display: flex; align-items: center; gap: 6px;
+  background: none; border: none; padding: 2px 0;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+}
+.historico-botao:hover { color: var(--vscode-foreground); }
+.historico-botao:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.historico-seta { display: inline-block; transition: transform .12s ease; }
+.historico[data-aberto="sim"] .historico-seta { transform: rotate(90deg); }
+
+.historico-lista {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 11em;
+  overflow-y: auto;
+  border-left: 2px solid var(--vscode-panel-border);
+}
+.historico-item {
+  display: flex; align-items: baseline; gap: 8px;
+  padding: 2px 0 2px 10px;
+  font-size: .85em;
+  cursor: pointer;
+}
+.historico-item:hover { background: var(--vscode-list-hoverBackground); }
+.historico-hora { color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; flex: none; }
+.historico-linha {
+  font-family: var(--vscode-editor-font-family);
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.historico-fim { flex: none; color: var(--vscode-descriptionForeground); }
+.historico-item[data-fim="bem"] .historico-fim { color: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+.historico-item[data-fim="mal"] .historico-fim { color: var(--vscode-errorForeground); }
+.historico-item[data-fim="parado"] .historico-fim { color: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); }
+.historico-lista::-webkit-scrollbar { width: 10px; }
+.historico-lista::-webkit-scrollbar-track { background: transparent; }
+.historico-lista::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 5px; }
+.historico-lista::-webkit-scrollbar-button { display: none; }
+
+/* ── Botões ────────────────────────────────────────────────────────────────── */
+
+.botao {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+.botao:hover { background: var(--vscode-button-hoverBackground); }
+.botao:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.botao[disabled] { opacity: .5; cursor: default; }
+
+.botao.discreto {
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+}
+.botao.discreto:hover { background: var(--vscode-button-secondaryHoverBackground); }
+
+.botao.parar { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.botao.parar.parando { animation: pulsar .6s ease-in-out infinite; }
+
+/* Botão de ícone: quadrado, o desenho herda a cor do texto do botão. */
+.botao.icone {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0;
+}
+.botao.icone svg { width: 16px; height: 16px; fill: currentColor; }
+/*
+  ⚠️ `hidden` TEM QUE ESCONDER. O atributo só vale pelo `display: none` do navegador, e a
+  regra acima (`display: inline-flex`) passava por cima dele: em 10/09/2026, noite, o
+  "Parar" apareceu em repouso com o `hidden` no lugar — escondido no papel, visível na
+  tela. Visto no retrato; nenhum teste olhava o estilo calculado (agora `painel.mjs` olha).
+  Resolvido por especificidade (0,3,0 vence 0,2,0), sem prioridade forçada.
+*/
+.botao.icone[hidden] { display: none; }
+
+/* "Sair" não é ação primária: sem brasa em repouso, a cor de link só ao passar o mouse. */
+.botao-texto {
+  font: inherit;
+  background: none; border: none; padding: 0;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+.botao-texto:hover { color: var(--vscode-textLink-activeForeground); }
+
+/* ── O pé: onde se escreve ─────────────────────────────────────────────────── */
+
+/*
+  ⚠️ O PÉ NÃO É MAIS UMA FAIXA. Até 10/09/2026, noite, ele tinha o fundo `editorWidget`
+  (uma faixa clara, ΔL* 8,2 acima da conversa) com a caixa AFUNDADA dentro — três camadas
+  onde a tela-referência da V1 tem uma. A revisão de beleza mostrou que, com a conversa
+  vazia, a faixa era a primeira coisa que o olho via: moldura em volta de moldura, o
+  contrário do "menos moldura" que ele pediu.
+
+  Agora o pé é a MESMA superfície da conversa, e a caixa SOBE dela, como na referência:
+  `input.background` sobre `editor.background` dá **ΔL* 8,2** no escuro (a mesma separação
+  de antes, no sentido certo). ⚠️ No claro dá **ΔL* 3,31** — abaixo do limiar ~4 da V1; lá
+  quem separa é a borda. Medido nos temas gerados; registrado, não escondido.
+
+  Nenhuma cor nova — as duas já são da paleta aprovada.
+*/
+.pe {
+  flex: none;
+  padding: 6px 16px 12px;
+  background: var(--vscode-editor-background);
+}
+
+.caixa {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+.caixa:focus-within { border-color: var(--vscode-focusBorder); }
+
+/*
+  V18 — A ALÇA DA CAIXA DE ESCREVER. Uma faixa de 8 px sobre a borda de cima da caixa, com o cursor de
+  redimensionar; o traço do meio só aparece na passagem, no foco e durante o arrasto (em repouso a caixa é a
+  de sempre). Cores do tema: o traço é a cor da barra de rolagem, e no foco a cor de foco.
+  ⚠️ Fora do fluxo (`position: absolute`): a caixa e a linha do pé medem o mesmo que antes — o pé a 506 px
+  não ganha nem perde um pixel com ela.
+*/
+.caixa { position: relative; }
+.alca-caixa {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: -5px;
+  height: 8px;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  outline: none;
+}
+.alca-caixa::before {
+  content: '';
+  width: 40px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--vscode-scrollbarSlider-hoverBackground, var(--vscode-panel-border));
+  opacity: 0;
+  transition: opacity .12s ease-out;
+}
+.caixa:hover .alca-caixa::before,
+body.arrastando-alca .alca-caixa::before { opacity: 1; }
+.alca-caixa:focus-visible::before { opacity: 1; background: var(--vscode-focusBorder); }
+body.arrastando-alca { cursor: ns-resize; user-select: none; }
+@media (prefers-reduced-motion: reduce) { .alca-caixa::before { transition: none; } }
+
+/*
+  ESPERANDO VOCÊ DECIDIR: a caixa ganha a cor de aviso. Numa conversa longa o cartão de
+  permissão pode estar fora da tela, e o ponto de 9 px no canto não basta (revisão de
+  beleza). A caixa é para onde o olho vai quando a pessoa volta para a janela.
+*/
+body[data-estado="esperando_permissao"] .caixa {
+  border-color: var(--vscode-editorWarning-foreground, var(--vscode-inputValidation-warningBorder));
+}
+
+#entrada {
+  flex: 1 1 auto;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  font: inherit;
+  line-height: 1.5;
+  /* 6 px em cima e embaixo: com uma linha, o texto fica no meio da altura do botão de
+     32 px (antes ficava ~6 px abaixo do centro — revisão de beleza). */
+  padding: 6px 0;
+  /* O teto é do script (`ajustarAltura`): 40% da janela no automático, até 70% com a altura escolhida na alça. */
+  max-height: 40vh;
+  overflow-y: auto;
+}
+#entrada::placeholder { color: var(--vscode-input-placeholderForeground); }
+/*
+  ⚠️ A caixa de escrever também rola — e sem estas quatro linhas ela ganhava a barra PADRÃO do Chromium,
+  com botões de seta e um trilho da cor do editor cortando um canal escuro dentro do campo. Medido na
+  revisão de beleza da V3, com o painel a 437 px (a largura que a própria V3 cria ao pôr o diff ao lado):
+  15 px de barra estranha dentro da caixa. A conversa já tinha a regra; a caixa, não.
+*/
+#entrada::-webkit-scrollbar { width: 10px; }
+#entrada::-webkit-scrollbar-track { background: transparent; }
+#entrada::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 5px; }
+#entrada::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+
+.acoes { display: flex; gap: 6px; flex: none; }
+
+.erro {
+  align-self: stretch;
+  border-left: 3px solid var(--vscode-errorForeground);
+  background: var(--vscode-inputValidation-errorBackground, transparent);
+  padding: 8px 12px;
+  border-radius: 4px;
+  /* O vermelho é SINAL (a borda), não cor de parágrafo. Medido em 18/09/2026, tema escuro: o texto
+     inteiro em `errorForeground` sobre o fundo tingido do próprio erro dava 2,67:1 — ilegível, e
+     no tema padrão. A cor do erro foi calibrada para ≥ 3:1 como sinal contra o fundo, não para
+     texto corrido. */
+  color: var(--vscode-foreground);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Não ter entrado na conta é o estado normal de quem acabou de instalar, não um erro: o cartão
+   veste a roupa de convite (borda de destaque, fundo neutro), e não a de defeito. */
+.erro.convite {
+  border-left-color: var(--vscode-focusBorder);
+  background: var(--vscode-editorWidget-background);
+}
+
+/*
+  A ÚNICA medida "mágica" do arquivo, declarada de propósito: a barra de rolagem.
+  O VS Code não expõe variável para a largura dela, e deixar a padrão do Chromium
+  (17 px, cinza claro) num tema carvão é a coisa que mais denuncia "isto é uma página
+  web dentro do editor". As cores continuam vindo do tema.
+*/
+.conversa::-webkit-scrollbar { width: 10px; }
+.conversa::-webkit-scrollbar-track { background: transparent; }
+.conversa::-webkit-scrollbar-thumb {
+  background: var(--vscode-scrollbarSlider-background);
+  border-radius: 5px;
+}
+.conversa::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+/* As setinhas das pontas são do Chromium e não existem em barra nenhuma do editor — é o detalhe que
+   mais denuncia "isto é uma página web dentro do editor" (revisão de beleza da V3, que as mediu na
+   barra horizontal da conversa). Vale para as duas barras. ⚠️ Não medido em tela depois do conserto. */
+.conversa::-webkit-scrollbar-button,
+#entrada::-webkit-scrollbar-button { display: none; }
+
+/* ── O pensamento do agente (pensamento estendido) ──────────────────────────── */
+
+/*
+  Discreto de propósito: é raciocínio, não resposta. Quem relê a conversa depois quer
+  o que ele FEZ, não o caminho até lá. Mas ficar mudo era pior — o motor emitia
+  `pensando` e a tela ignorava, então numa cadeia longa de pensamento o painel parecia
+  travado. Achado por uma revisão independente e confirmado pelo teste da ponte, 10/09/2026.
+*/
+.pensando {
+  align-self: flex-start;
+  max-width: 90%;
+  font-size: .88em;
+  font-style: italic;
+  color: var(--vscode-descriptionForeground);
+  border-left: 2px dotted var(--vscode-panel-border);
+  padding-left: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pensando-rotulo {
+  display: block;
+  font-style: normal;
+  font-size: .85em;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  opacity: .7;
+  margin-bottom: 2px;
+}
+/* Depois que a resposta começa, o pensamento encolhe e sai do caminho. */
+.pensando.terminado {
+  max-height: 3.2em;
+  overflow: hidden;
+  opacity: .6;
+}
+
+/* ── V16: o botão dos agentes e o mapa ────────────────────────────────────────
+   O botão segue o do modelo: texto até ser tocado, sem moldura em repouso. O ícone (a árvore de três nós) fica na
+   cor do texto — o número já diz quantos rodam; na brasa ele era mais um ponto quente fixo no pé.
+   No pé estreito sai a palavra "agentes" e fica o ícone com o número (a frase inteira continua na dica). */
+.agentes {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  padding: 1px 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.agentes[hidden] { display: none; }
+.agentes:hover, .agentes[aria-expanded="true"] { border-color: var(--vscode-dropdown-border, var(--vscode-panel-border)); }
+.agentes:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.agentes-icone { width: 14px; height: 14px; flex: none; fill: currentColor; stroke: currentColor; stroke-width: 1.4; }
+.agentes-icone path { fill: none; }
+.agentes[data-rodando="sim"] .agentes-icone { color: var(--vscode-foreground); }
+@container (max-width: 560px) { .agentes-rotulo { display: none; } }
+/* V16 — MEDIDO: com o botão dos agentes, o pé a 506 px estourava 38 px. O maior item é o seletor do modo (149 px),
+   porque um <select> mede a opção MAIS COMPRIDA — inclusive a escondida ("faz tudo sem perguntar"). Com
+   `field-sizing: content` ele mede a opção ESCOLHIDA. Custo: o seletor muda de largura quando o modo muda. */
+.linha-de-estado .modo { field-sizing: content; }
+/* V16 — E, NO PÉ ESTREITO, o resto (medido a 506 px, com o botão dos agentes e o texto mais comprido de cada item):
+   o espaço entre os itens cai de 5 para 4 px, o botão dos agentes fica mais justo, e o e-mail — que ali já tinha 3 px —
+   sai de vez da linha (continua inteiro na dica). O que ainda não couber QUEBRA a linha em vez de passar da borda:
+   o "Sair" desce, alinhado à direita. Custo: com agentes, nos modos de texto mais comprido ("só planeja", "edita sem
+   perguntar", "faz tudo"), o pé ganha uma segunda linha só com o "Sair". */
+@container (max-width: 560px) {
+  .linha-de-estado { column-gap: 4px; row-gap: 2px; flex-wrap: wrap; }
+  .linha-de-estado .conta { flex: 0 1 0px; min-width: 0; }
+  #sair { margin-left: auto; }
+  .agentes { padding: 1px 2px; gap: 2px; }
+}
+
+/* O mapa: por cima da conversa inteira, com as cores de caixa flutuante do tema (a mesma família do painel de
+   escolha do modelo). Os cartões são da mesma superfície da caixa de escrever, separados pela borda.
+   ⚠️ As linhas da árvore NÃO são borda: são o que liga a sessão aos agentes (a "árvore" do desenho), e
+   precisam de 3:1 sobre a caixa (WCAG 1.4.11). Com a cor de borda elas davam 1,01:1 no escuro e 1,36:1 no
+   claro — o mapa virava uma lista de textos soltos. Usam a cor do texto discreto: 4,01:1 e 5,93:1. */
+.mapa {
+  position: fixed;
+  inset: 10px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 10px;
+  box-shadow: 0 8px 28px var(--vscode-widget-shadow, transparent);
+  color: var(--vscode-foreground);
+  container-type: inline-size;
+  container-name: mapa;
+}
+.mapa[hidden] { display: none; }
+.mapa-cabeca {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px 10px;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+.mapa-titulo { margin: 0; font-size: 1.15em; font-weight: 600; line-height: 1.3; }
+/* A cor é a do texto, não a "discreta" (4,17:1 no escuro — ver a linha de estado): a hierarquia fica no tamanho. */
+.mapa-sub { margin: 2px 0 0; font-size: .9em; }
+.mapa-fechar {
+  flex: none;
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.mapa-fechar svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.mapa-fechar:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); }
+.mapa-fechar:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+.mapa-corpo {
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: minmax(130px, 32%) minmax(0, 1fr);
+  column-gap: 28px;
+  align-items: start;
+  /* As linhas da grade ficam do tamanho do conteúdo. Sem isto a grade esticava as linhas até a altura do mapa, e numa
+     coluna sobravam ~170 px vazios entre o cartão da sessão e o primeiro agente (medido no executável). */
+  align-content: start;
+}
+.mapa-sessao {
+  position: sticky;
+  top: 0;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+}
+/* A linha da sessão até a coluna dos agentes: atravessa o espaço entre as duas colunas. */
+.mapa-sessao::after {
+  content: "";
+  position: absolute;
+  left: 100%;
+  top: 20px;
+  width: 29px;
+  border-top: 2px solid var(--vscode-descriptionForeground);
+}
+.mapa-sessao-ponto {
+  width: 9px; height: 9px; border-radius: 50%; flex: none; margin-top: .45em;
+  background: var(--vscode-descriptionForeground);
+}
+.mapa-sessao-ponto[data-viva="sim"] { background: var(--vscode-testing-iconPassed, var(--vscode-charts-green)); }
+.mapa-sessao-textos { display: flex; flex-direction: column; min-width: 0; }
+.mapa-sessao-titulo { font-weight: 600; overflow-wrap: anywhere; }
+.mapa-sessao-linha { font-size: .85em; overflow-wrap: anywhere; }
+
+/* A árvore: cada ramo tem um toco horizontal até o cartão e a linha vertical que liga os irmãos. */
+.mapa-ramos { list-style: none; margin: 0; padding: 0 0 0 16px; min-width: 0; }
+.mapa-ramo { position: relative; padding: 0 0 8px; min-width: 0; }
+.mapa-ramo:last-child { padding-bottom: 0; }
+.mapa-ramo::before {
+  content: "";
+  position: absolute;
+  left: -16px; top: 20px; width: 16px;
+  border-top: 2px solid var(--vscode-descriptionForeground);
+}
+.mapa-ramo::after {
+  content: "";
+  position: absolute;
+  left: -16px; top: 0; bottom: 0;
+  border-left: 2px solid var(--vscode-descriptionForeground);
+}
+.mapa-ramo:first-child::after { top: 20px; }
+.mapa-ramo:last-child::after { bottom: auto; height: 22px; }
+.mapa-ramo:first-child:last-child::after { display: none; }
+.mapa-ramos.aninhado { margin-top: 6px; }
+
+.agente {
+  width: 100%;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  cursor: pointer;
+}
+.agente:hover { background: var(--vscode-list-hoverBackground); }
+.agente[aria-expanded="true"] { border-color: var(--vscode-textLink-foreground); }
+.agente:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.agente-textos { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.agente-nome { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agente-linha { font-size: .85em; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agente-mais {
+  flex: none;
+  font-size: .8em;
+  padding: 0 6px;
+  border-radius: 9px;
+  border: 1px solid var(--vscode-panel-border);
+  font-variant-numeric: tabular-nums;
+}
+
+/* O estado muda de cor E de forma (a regra do ponto da conversa: quem não distingue cor distingue a forma).
+   Rodando = círculo cheio no destaque, pulsando · em pausa = anel no destaque · terminou = círculo cinza (discreto: já
+   acabou) · falhou = losango na cor de erro · parado = quadrado na cor de aviso. */
+.agente-ponto { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--vscode-descriptionForeground); }
+.agente-ponto[data-estado="rodando"] { background: var(--vscode-textLink-foreground); animation: pulsar 1.1s ease-in-out infinite; }
+.agente-ponto[data-estado="pausado"] { background: transparent; box-shadow: inset 0 0 0 2px var(--vscode-textLink-foreground); }
+.agente-ponto[data-estado="falhou"] { background: var(--vscode-errorForeground); border-radius: 1px; transform: rotate(45deg) scale(.85); }
+.agente-ponto[data-estado="parado"] { background: var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow)); border-radius: 1px; }
+@media (prefers-reduced-motion: reduce) { .agente-ponto[data-estado="rodando"] { animation: none; } }
+
+.agente-detalhe {
+  margin-top: 4px;
+  padding: 8px 10px 10px;
+  border-left: 2px solid var(--vscode-textLink-foreground);
+  border-radius: 0 0 8px 8px;
+  background: var(--vscode-editor-background);
+}
+.agente-campos { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 10px; margin: 0; font-size: .9em; }
+.agente-campos dt { font-weight: 600; }
+.agente-campos dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.agente-resumo { white-space: pre-wrap; max-height: 9em; overflow: auto; }
+.agente-nota { margin: 6px 0 0; font-size: .85em; }
+.agente-filhos { margin-top: 8px; }
+.agente-filhos-titulo { font-size: .8em; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2px; }
+.agente-parar { margin-top: 8px; }
+.agente-parar[data-confirmando="sim"] {
+  padding: 8px 10px;
+  border-left: 3px solid var(--vscode-editorWarning-foreground, var(--vscode-charts-yellow));
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+}
+.agente-parar-texto { margin: 0 0 8px; font-size: .9em; }
+/* O vermelho do tema é calibrado como SINAL (≥ 3:1 sobre o editor), não como texto: como cor da palavra ele dava
+   3,02:1 no escuro, abaixo dos 4,5:1 do texto pequeno. O texto fica na cor do texto (7,44:1 / 6,06:1) e o vermelho
+   vai para a borda, que é o sinal de "isto destrói" (3,02:1 / 12,68:1). */
+.agente-parar-botao {
+  font: inherit;
+  font-size: .9em;
+  padding: 2px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  background: transparent;
+  border: 1px solid var(--vscode-errorForeground);
+}
+.agente-parar-botao:hover { background: var(--vscode-list-hoverBackground); }
+.agente-parar-botao:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+
+/* Mapa estreito: a sessão em cima, os agentes embaixo; a linha da sessão desce até a linha vertical da árvore.
+   Uma coluna até 560 px (era 420): a 454 px, em duas colunas, a sessão ficava com 136 px e o título e a linha dela em
+   cinco linhas (medido). E no estreito o nome e a linha do agente quebram em vez de cortar: num cartão de 182 px
+   "FUNCIONAL A: V12/V11/janelas" virava "FUNCIONAL A: …". */
+@container mapa (max-width: 560px) {
+  .agente-nome, .agente-linha { white-space: normal; overflow-wrap: break-word; }
+  .mapa-corpo { grid-template-columns: minmax(0, 1fr); row-gap: 14px; }
+  .mapa-sessao { position: relative; }
+  .mapa-sessao::after { left: 20px; top: 100%; width: 0; height: 16px; border-top: none; border-left: 2px solid var(--vscode-descriptionForeground); }
+  .mapa-corpo > .mapa-ramos { margin-left: 20px; }
+  .mapa-corpo > .mapa-ramos > .mapa-ramo:first-child::after { top: -2px; }
+}

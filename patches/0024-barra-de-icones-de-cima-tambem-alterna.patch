@@ -1,0 +1,25 @@
+diff --git a/src/vs/workbench/browser/parts/paneCompositeBar.ts b/src/vs/workbench/browser/parts/paneCompositeBar.ts
+index 2a139c6a0a6..8e3ccccf934 100644
+--- a/src/vs/workbench/browser/parts/paneCompositeBar.ts
++++ b/src/vs/workbench/browser/parts/paneCompositeBar.ts
+@@ -846,7 +846,19 @@ class ViewContainerActivityAction extends CompositeBarAction {
+ 
+ 		const focus = (event && 'preserveFocus' in event) ? !event.preserveFocus : true;
+ 
+-		if (this.part === Parts.ACTIVITYBAR_PART) {
++		// OFICINA patch 0024 — a barra de icones da BARRA DE TITULO tambem alterna.
++		//
++		// O bloco abaixo e o que faz o segundo clique no icone ja ativo FECHAR a lateral. Ate a V23
++		// ele so valia para `ACTIVITYBAR_PART`, e o patch 0022 criou a barra de icones passando
++		// `Parts.TITLEBAR_PART` — entao o teste falhava, o bloco era pulado, e a execucao caia no
++		// `openPaneComposite` do fim, que SEMPRE abre. Efeito na tela: clicar num icone abria, clicar
++		// noutro trocava, e clicar no mesmo de novo nao fechava nada. Aberta uma vez, a lateral ficava
++		// aberta para sempre.
++		//
++		// Nao ha comportamento novo aqui: e o mesmo toggle do nucleo, alcancando a barra que mudou de
++		// lugar. A lateral que ele esconde continua sendo a SIDEBAR_PART, porque e ela que esta barra
++		// abre (`ViewContainerLocation.Sidebar`, no patch 0022).
++		if (this.part === Parts.ACTIVITYBAR_PART || this.part === Parts.TITLEBAR_PART) {
+ 			const sideBarVisible = this.layoutService.isVisible(Parts.SIDEBAR_PART);
+ 			const activeViewlet = this.paneCompositePart.getActivePaneComposite();
+ 			const focusBehavior = this.configurationService.getValue<string>('workbench.activityBar.iconClickBehavior');

@@ -1,0 +1,94 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index 43e145eb3b7..430cf8fadeb 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -121,9 +121,52 @@ export interface IProductConfiguration {
+ 	readonly sharedDataFolderName: string; // location for shared data (e.g. ~/.vscode-insiders-shared)
+ 
+ 	readonly builtInExtensions?: IBuiltInExtension[];
++	/**
++	 * Drop the walkthroughs that ship inside the workbench source.
++	 *
++	 * A product built from this source is not Visual Studio Code, and the built-in
++	 * walkthroughs name it on screen ("Get started with VS Code"), advertise features
++	 * this build does not ship, and cannot be turned off by configuration. A product
++	 * that brings its own welcome walkthrough sets this to `true`; everything a product
++	 * or an extension contributes keeps working.
++	 */
++	readonly hideBuiltinWalkthroughs?: boolean;
++
+ 	readonly walkthroughMetadata?: IProductWalkthrough[];
+ 	readonly featuredExtensions?: IFeaturedExtension[];
+ 
++	/**
++	 * Default values for settings, shipped with the product.
++	 *
++	 * The web embedder already accepts these through
++	 * `IWorkbenchConstructionOptions.configurationDefaults`; this makes the same
++	 * overrides available to a desktop build, which has no embedder to provide them.
++	 * They are registered as DEFAULTS: user, workspace and policy settings still win.
++	 */
++	readonly configurationDefaults?: IStringDictionary<unknown>;
++
++	/**
++	 * View containers that start UNPINNED the first time they appear in a composite bar.
++	 *
++	 * There is no setting for which icons the activity bar shows out of the box: a
++	 * container that registers without saved state is always pinned. A product that
++	 * wants a shorter bar lists the ids here. Only the very first registration without
++	 * saved state is affected; once the bar has stored a state for a container (the user
++	 * pinned it, or the default was saved), that state wins, and moving a container
++	 * between locations keeps the upstream behaviour.
++	 */
++	readonly defaultUnpinnedViewContainers?: readonly string[];
++
++	/**
++	 * The folder, under the platform's application data directory, where this build keeps the user's
++	 * data (settings, layout, workbench storage). Defaults to `nameShort`.
++	 *
++	 * A product that ships in two editions built from the same source — one public, one private — can
++	 * keep their data apart with this key alone, instead of renaming the whole product for one of them:
++	 * `nameShort` also names the executable and appears on screen. See patches/0015.
++	 */
++	readonly userDataFolderName?: string;
++
+ 	readonly downloadUrl?: string;
+ 	readonly updateUrl?: string;
+ 	readonly webUrl?: string;
+diff --git a/src/vs/workbench/services/configuration/browser/configuration.ts b/src/vs/workbench/services/configuration/browser/configuration.ts
+index a83c04f4d13..0bce3695b24 100644
+--- a/src/vs/workbench/services/configuration/browser/configuration.ts
++++ b/src/vs/workbench/services/configuration/browser/configuration.ts
+@@ -28,6 +28,7 @@ import { DefaultConfiguration as BaseDefaultConfiguration } from '../../../../pl
+ import { IJSONEditingService } from '../common/jsonEditing.js';
+ import { IUserDataProfilesService } from '../../../../platform/userDataProfile/common/userDataProfile.js';
+ import { IBrowserWorkbenchEnvironmentService } from '../../environment/browser/environmentService.js';
++import product from '../../../../platform/product/common/product.js';
+ 
+ export class DefaultConfiguration extends BaseDefaultConfiguration {
+ 
+@@ -45,6 +46,24 @@ export class DefaultConfiguration extends BaseDefaultConfiguration {
+ 	) {
+ 		super(logService);
+ 		this.cacheKey = { type: 'defaults', key: `${cacheScope}-configurationDefaultsOverrides` };
++
++		// Defaults shipped WITH THE PRODUCT (product.json).
++		//
++		// Registered here, in the constructor, for the same reason the embedder ones
++		// below are: this runs before the workbench reads any setting. A built-in
++		// extension contributing `configurationDefaults` CANNOT serve this purpose —
++		// extensions are registered after the layout and the title bar have already
++		// decided what to show, and their overrides only reach the first paint through
++		// a cache that is empty on a fresh profile. Settings read once at startup
++		// (`window.menuBarVisibility`, `workbench.secondarySideBar.defaultVisibility`,
++		// `workbench.startupEditor`) therefore ignore the extension on the very first
++		// run of a new install — which is exactly the run that forms the impression.
++		//
++		// Product defaults lose to user, workspace and policy settings, as defaults must.
++		if (product.configurationDefaults) {
++			this.configurationRegistry.registerDefaultConfigurations([{ overrides: product.configurationDefaults as IStringDictionary<IStringDictionary<unknown>> }]);
++		}
++
+ 		if (environmentService.options?.configurationDefaults) {
+ 			this.configurationRegistry.registerDefaultConfigurations([{ overrides: environmentService.options.configurationDefaults as IStringDictionary<IStringDictionary<unknown>> }]);
+ 		}

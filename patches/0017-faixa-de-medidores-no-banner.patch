@@ -1,0 +1,348 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index aa7986713d5..23b9cfaeb82 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -211,6 +211,19 @@ export interface IProductConfiguration {
+ 	 */
+ 	readonly hideActivityBarGlobalActions?: boolean;
+ 
++	/**
++	 * Name of a context key whose value the banner draws as a row of GAUGES
++	 * (label + percentage + filled bar), instead of a message.
++	 *
++	 * The key holds JSON: `{ "botao"?: "<commandId>", "medidores": [{ "rotulo": string, "pct": number }] }`.
++	 * Empty or absent value means no gauges, and the banner behaves as before.
++	 *
++	 * The core stays unaware of what the gauges MEAN: the product picks the key, an
++	 * extension fills it, and only they know whether it is a plan limit, a disk quota or
++	 * a build progress.
++	 */
++	readonly bannerGaugesContextKey?: string;
++
+ 	readonly mcpGallery?: {
+ 		readonly serviceUrl: string;
+ 		readonly itemWebUrl: string;
+diff --git a/src/vs/workbench/browser/parts/banner/bannerPart.ts b/src/vs/workbench/browser/parts/banner/bannerPart.ts
+index a0d5ce1c3b7..09944303488 100644
+--- a/src/vs/workbench/browser/parts/banner/bannerPart.ts
++++ b/src/vs/workbench/browser/parts/banner/bannerPart.ts
+@@ -28,7 +28,13 @@ import { KeyCode } from '../../../../base/common/keyCodes.js';
+ import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+ import { URI } from '../../../../base/common/uri.js';
+ import { widgetClose } from '../../../../platform/theme/common/iconRegistry.js';
++import { registerIcon } from '../../../../platform/theme/common/iconRegistry.js';
++import { Codicon } from '../../../../base/common/codicons.js';
+ import { BannerFocused } from '../../../common/contextkeys.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
++import { ICommandService } from '../../../../platform/commands/common/commands.js';
++
++const gaugeExpandIcon = registerIcon('banner-gauges-expand', Codicon.graphLine, localize('bannerGaugesExpandIcon', 'Icon of the button that opens the details behind the banner gauges.'));
+ 
+ // Banner Part
+ 
+@@ -58,6 +64,16 @@ export class BannerPart extends Part implements IBannerService {
+ 	private item: IBannerItem | undefined;
+ 	private visible = false;
+ 
++	/**
++	 * GAUGES (OFICINA patch 0017). The product names a context key; whatever is in it is drawn
++	 * as a row of gauges. The core never learns what they measure.
++	 *
++	 * A message banner always WINS over the gauges: a warning the user must read cannot be
++	 * pushed off screen by a permanent readout. When the message is closed, the gauges return.
++	 */
++	private readonly gaugesKey: string | undefined;
++	private gaugesShowing = false;
++
+ 	private actionBar: ActionBar | undefined;
+ 	private messageActionsContainer: HTMLElement | undefined;
+ 	private focusedActionIndex: number = -1;
+@@ -69,8 +85,12 @@ export class BannerPart extends Part implements IBannerService {
+ 		@IContextKeyService private readonly contextKeyService: IContextKeyService,
+ 		@IInstantiationService private readonly instantiationService: IInstantiationService,
+ 		@IMarkdownRendererService private readonly markdownRendererService: IMarkdownRendererService,
++		@IProductService productService: IProductService,
++		@ICommandService private readonly commandService: ICommandService,
+ 	) {
+ 		super(Parts.BANNER_PART, { hasTitle: false }, themeService, storageService, layoutService);
++
++		this.gaugesKey = productService.bannerGaugesContextKey;
+ 	}
+ 
+ 	protected override createContentArea(parent: HTMLElement): HTMLElement {
+@@ -88,9 +108,145 @@ export class BannerPart extends Part implements IBannerService {
+ 		const scopedContextKeyService = this._register(this.contextKeyService.createScoped(this.element));
+ 		BannerFocused.bindTo(scopedContextKeyService).set(true);
+ 
++		// Gauges (OFICINA patch 0017): redraw whenever the product's key changes, and draw once
++		// now — the key may already hold a value by the time this part is created.
++		if (this.gaugesKey) {
++			const keys = new Set([this.gaugesKey]);
++			this._register(this.contextKeyService.onDidChangeContext(e => {
++				if (e.affectsSome(keys)) {
++					this.updateGauges();
++				}
++			}));
++			this.updateGauges();
++		}
++
+ 		return this.element;
+ 	}
+ 
++	/**
++	 * Reads the product's gauge key and draws (or clears) the gauge row.
++	 *
++	 * Nothing here knows what the gauges measure. It reads label and percentage, clamps the
++	 * percentage so a bad value cannot paint outside the bar, and draws.
++	 */
++	private updateGauges(): void {
++		if (!this.gaugesKey) {
++			return;
++		}
++
++		const gauges = this.readGauges();
++
++		// A message banner wins: do not touch the DOM while one is on screen. When it closes,
++		// close() calls back here and the gauges return.
++		if (this.item) {
++			this.gaugesShowing = false;
++			return;
++		}
++
++		if (!gauges.length) {
++			if (this.gaugesShowing) {
++				this.gaugesShowing = false;
++				clearNode(this.element);
++				this.setVisibility(false);
++			}
++			return;
++		}
++
++		clearNode(this.element);
++		this.element.removeAttribute('aria-label');
++
++		const container = append(this.element, $('div.gauges-container'));
++
++		if (this.expandCommandId) {
++			const button = append(container, $('a.gauges-expand'));
++			button.setAttribute('role', 'button');
++			button.setAttribute('tabindex', '0');
++			button.setAttribute('aria-label', localize('expandGauges', "Show details"));
++			button.appendChild($(`span${ThemeIcon.asCSSSelector(gaugeExpandIcon)}`));
++			const run = () => {
++				if (this.expandCommandId) {
++					this.commandService.executeCommand(this.expandCommandId);
++				}
++			};
++			this._register(addDisposableListener(button, EventType.CLICK, run));
++			this._register(addDisposableListener(button, EventType.KEY_DOWN, (e: KeyboardEvent) => {
++				if (e.key === 'Enter' || e.key === ' ') {
++					e.preventDefault();
++					run();
++				}
++			}));
++		}
++
++		for (const gauge of gauges) {
++			const item = append(container, $('div.gauge'));
++			// The label and the number are read together by a screen reader, as one phrase.
++			item.setAttribute('aria-label', `${gauge.rotulo} ${gauge.pct}%`);
++
++			append(item, $('span.gauge-label')).textContent = gauge.rotulo;
++
++			const track = append(item, $('div.gauge-track'));
++			const fill = append(track, $('div.gauge-fill'));
++			fill.style.width = `${gauge.pct}%`;
++
++			append(item, $('span.gauge-value')).textContent = `${gauge.pct}%`;
++		}
++
++		this.gaugesShowing = true;
++		this.setVisibility(true);
++	}
++
++	/** The command the expand button runs, as published alongside the gauges. */
++	private expandCommandId: string | undefined;
++
++	/**
++	 * Parses the product's gauge key.
++	 *
++	 * Anything malformed yields an empty list rather than an exception: this runs on every
++	 * context change, and a bad value must not be able to break the workbench.
++	 */
++	private readGauges(): { rotulo: string; pct: number }[] {
++		this.expandCommandId = undefined;
++
++		const raw = this.contextKeyService.getContextKeyValue<unknown>(this.gaugesKey!);
++		if (typeof raw !== 'string' || !raw) {
++			return [];
++		}
++
++		let parsed: unknown;
++		try {
++			parsed = JSON.parse(raw);
++		} catch {
++			return [];
++		}
++
++		if (!parsed || typeof parsed !== 'object') {
++			return [];
++		}
++
++		const obj = parsed as { botao?: unknown; medidores?: unknown };
++		if (typeof obj.botao === 'string' && obj.botao) {
++			this.expandCommandId = obj.botao;
++		}
++
++		if (!Array.isArray(obj.medidores)) {
++			return [];
++		}
++
++		const out: { rotulo: string; pct: number }[] = [];
++		for (const entry of obj.medidores) {
++			if (!entry || typeof entry !== 'object') {
++				continue;
++			}
++			const { rotulo, pct } = entry as { rotulo?: unknown; pct?: unknown };
++			if (typeof rotulo !== 'string' || typeof pct !== 'number' || !isFinite(pct)) {
++				continue;
++			}
++			out.push({ rotulo, pct: Math.max(0, Math.min(100, Math.round(pct))) });
++		}
++
++		return out;
++	}
++
+ 	private close(item: IBannerItem): void {
+ 		// Hide banner
+ 		this.setVisibility(false);
+@@ -104,6 +260,9 @@ export class BannerPart extends Part implements IBannerService {
+ 		}
+ 
+ 		this.item = undefined;
++
++		// The gauges were pushed aside by this message; bring them back (OFICINA patch 0017).
++		this.updateGauges();
+ 	}
+ 
+ 	private focusActionLink(): void {
+@@ -175,7 +334,15 @@ export class BannerPart extends Part implements IBannerService {
+ 			return;
+ 		}
+ 
++		// ⚠️ The item has to be cleared here too, not only in close() (OFICINA patch 0017).
++		// Before this, a banner dismissed through the service — rather than through its X — left
++		// `this.item` set, and updateGauges() returned early forever after: the gauges never came
++		// back for the rest of the session. On a readout whose whole requirement is "never lose the
++		// number", losing it permanently to an unrelated notice is the worst possible failure.
++		this.item = undefined;
++		clearNode(this.element);
+ 		this.setVisibility(false);
++		this.updateGauges();
+ 	}
+ 
+ 	show(item: IBannerItem): void {
+diff --git a/src/vs/workbench/browser/parts/banner/media/bannerpart.css b/src/vs/workbench/browser/parts/banner/media/bannerpart.css
+index a0de81f24eb..640da41bf9b 100644
+--- a/src/vs/workbench/browser/parts/banner/media/bannerpart.css
++++ b/src/vs/workbench/browser/parts/banner/media/bannerpart.css
+@@ -78,3 +78,99 @@
+ .monaco-workbench .part.banner .action-container .codicon {
+ 	color: var(--vscode-banner-foreground);
+ }
++
++/* ── GAUGES (OFICINA patch 0017) ────────────────────────────────────────────
++ *
++ * A row of small meters drawn in the banner strip instead of a message. The core does not
++ * know what they measure — it draws a label, a bar filled to a percentage, and the number.
++ *
++ * Colours come from tokens that already exist, so any theme gets a sane result without having
++ * to learn new keys: the track is the banner foreground at low opacity, the fill is the
++ * progress bar colour.
++ */
++
++.monaco-workbench .part.banner .gauges-container {
++	display: flex;
++	flex-direction: row;
++	align-items: center;
++	gap: 18px;
++	padding: 0 12px;
++	width: 100%;
++	height: 26px;
++	overflow: hidden;
++}
++
++.monaco-workbench .part.banner .gauges-expand {
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	flex-shrink: 0;
++	width: 20px;
++	height: 20px;
++	border-radius: 4px;
++	color: var(--vscode-banner-foreground);
++	cursor: pointer;
++}
++
++.monaco-workbench .part.banner .gauges-expand:hover {
++	background-color: var(--vscode-toolbar-hoverBackground);
++}
++
++.monaco-workbench .part.banner .gauges-expand:focus-visible {
++	outline: 1px solid var(--vscode-focusBorder);
++	outline-offset: -1px;
++}
++
++.monaco-workbench .part.banner .gauge {
++	display: flex;
++	flex-direction: row;
++	align-items: center;
++	gap: 6px;
++	flex-shrink: 0;
++}
++
++.monaco-workbench .part.banner .gauge-label {
++	letter-spacing: .02em;
++	white-space: nowrap;
++}
++
++/* The track never grows past its share of the strip: with a narrow window the bars shrink,
++   and the label and the number — which are what you actually read — stay legible.
++   ⚠️ THE DIM PART IS A PSEUDO-ELEMENT, NOT `opacity` ON THE TRACK. `opacity` applies to the whole
++   subtree, so it would also dim the fill inside — measured in a headless browser, the "used" part
++   came out darker than the "unused" one: [79,57,40] against [80,80,80]. The bar read backwards.
++   A pseudo-element dims only the background, and the fill keeps its own colour. `color-mix` would
++   also work and is shorter, but it needs a newer engine than this file can assume. */
++.monaco-workbench .part.banner .gauge-track {
++	position: relative;
++	width: 90px;
++	min-width: 28px;
++	height: 6px;
++	border-radius: 3px;
++	overflow: hidden;
++	flex-shrink: 1;
++}
++
++.monaco-workbench .part.banner .gauge-track::before {
++	content: '';
++	position: absolute;
++	inset: 0;
++	background-color: var(--vscode-banner-foreground);
++	opacity: 0.22;
++}
++
++.monaco-workbench .part.banner .gauge-fill {
++	position: relative;
++	height: 100%;
++	border-radius: 3px;
++	background-color: var(--vscode-progressBar-background);
++	/* The width comes from the percentage, set inline. A transition would animate a number that
++	   only changes every few minutes — it would read as the bar "drifting" on its own. */
++}
++
++.monaco-workbench .part.banner .gauge-value {
++	min-width: 34px;
++	text-align: right;
++	font-variant-numeric: tabular-nums;
++	white-space: nowrap;
++}

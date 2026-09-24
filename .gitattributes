@@ -1,0 +1,45 @@
+# Fim de linha — o que NAO pode mudar ao viajar entre maquinas.
+#
+# Este arquivo nasceu de um aviso do proprio git, em 06/09/2026, ao commitar o primeiro
+# patch de produto:
+#
+#   warning: in the working copy of 'patches/0001-....patch',
+#            LF will be replaced by CRLF the next time Git touches it
+#
+# O aviso estava certo, e o defeito era pior do que parecia. MEDIDO, byte a byte, num
+# `git clone` de verdade: os `.patch` sao gravados no repositorio em LF e chegam ao
+# clone em **CRLF** — e um patch em CRLF **NAO APLICA**:
+#
+#   error: patch failed: src/vs/base/common/product.ts:124
+#   error: src/vs/base/common/product.ts: patch does not apply
+#
+# Um patch descreve BYTES; trocar as quebras de linha faz os contadores do cabecalho
+# `@@` deixarem de bater com o conteudo. E o modo de falha e cruel: na maquina de quem
+# escreveu o patch nada quebra (o arquivo ja esta em disco, em LF), e o build morre no
+# clone seguinte, apontando para um arquivo do VS Code que ninguem tocou — parece
+# problema do upstream, e nao e.
+#
+# ⚠️ Isto NAO era so do patch novo: valia para os tres de viabilidade, commitados
+# desde a V0. O projeto nao compilava num clone novo, e ninguem sabia, porque o build
+# so tinha sido rodado na maquina onde os patches nasceram.
+#
+# `-text` desliga qualquer conversao: o arquivo entra e sai igual.
+*.patch -text
+*.diff -text
+
+# ⛔ E os `.bat` NAO entram nesta lista — a primeira versao deste arquivo os incluiu, e
+# estava errada nas duas tentativas.
+#
+# O `cmd` exige CRLF, entao o reflexo e "protege-los tambem". Mas a medicao mostra que
+# o caminho atual JA FUNCIONA e nao precisa de ajuda: o blob esta em LF e o clone
+# entrega CRLF, porque o `core.autocrlf=true` do Windows faz exatamente isso.
+# Declarar `-text` os entregaria em **LF** — quebrando o build que hoje funciona. E
+# `text eol=crlf`, testado antes, tambem saiu errado.
+#
+# A licao vale mais que a regra: o reflexo de "proteger tudo" trocaria um arquivo
+# quebrado por um arquivo quebrado diferente. Mexer so onde a medicao mostrou defeito.
+
+# Binarios: nunca tocar.
+*.png binary
+*.ico binary
+*.vsix binary

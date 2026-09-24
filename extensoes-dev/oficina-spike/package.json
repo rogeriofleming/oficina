@@ -1,0 +1,29 @@
+{
+  "name": "oficina-spike",
+  "displayName": "OFICINA — spike do agente",
+  "description": "Instrumento de investigação da V0.5: prova que o Agent SDK responde dentro do editor. NÃO é embutido no produto.",
+  "version": "0.0.1",
+  "publisher": "oficina",
+  "engines": {
+    "vscode": "^1.136.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "oficina-claude.spike",
+        "title": "OFICINA: spike do agente (prova de vida)",
+        "category": "OFICINA"
+      }
+    ]
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.261"
+  }
+}

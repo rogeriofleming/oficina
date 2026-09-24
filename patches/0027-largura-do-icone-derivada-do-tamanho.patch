@@ -1,0 +1,45 @@
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 4788bd04fce..3be147fda03 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -49,7 +49,30 @@ import { ActionsOrientation, IActionViewItem, prepareActions } from '../../../..
+  * com nome porque ele e o unico numero magico deste patch, e um numero magico sem nome e o que
+  * ninguem consegue conferir depois.
+  */
+-const LARGURA_DO_ICONE_NA_BARRA_DE_TITULO = 26;
++/**
++ * O tamanho do icone em si. Manda no `iconSize` das opcoes da barra E na conta de largura abaixo.
++ *
++ * ⚠️ O CSS TEM DE ACOMPANHAR ESTE NUMERO. Ele mora em `titlebarpart.css`, em duas regras (uma
++ * para icone de imagem, outra para codicon), e nao ha como liga-lo daqui. Ha criterio na tela
++ * cobrando que os quatro icones tenham o mesmo tamanho renderizado, que e o que pega a divergencia.
++ */
++const TAMANHO_DO_ICONE_NA_BARRA_DE_TITULO = 20;
++
++/**
++ * Quanto cada icone OCUPA na barra, em pixels: o icone mais a folga lateral do `action-item`.
++ *
++ * ⚠️ ESTE NUMERO E DERIVADO, E ANTES ERA SOLTO — e foi assim que ele ficou errado. Ele nasceu
++ * como `26`, medido na lateral do nucleo quando o icone tinha 16px (passo de 26 px entre os
++ * centros). Quando o icone subiu para 20px, o passo real virou 32 e a constante continuou em 26:
++ * a barra passou a reservar 26 px por icone para icones que ocupam 32.
++ *
++ * Com quatro icones a diferenca ainda cabia; com CINCO (a pessoa fixando a Pesquisa, que nasce
++ * solta) a conta dava 130 px para 160 px de icones, e dois caiam no transbordo "Additional Views"
++ * — medido na suite da lateral, no build V24-B2.
++ *
++ * Derivar impede que os dois voltem a divergir: mexer no tamanho move a largura junto.
++ */
++const LARGURA_DO_ICONE_NA_BARRA_DE_TITULO = TAMANHO_DO_ICONE_NA_BARRA_DE_TITULO + 12;
+ 
+ // OFICINA patch 0022: a barra de icones das vistas, desenhada aqui quando o produto pede.
+ import { ActivityBarCompositeBar, ActivitybarPart } from '../activitybar/activitybarPart.js';
+@@ -653,7 +676,7 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 			activityHoverOptions: { position: () => HoverPosition.BELOW },
+ 			fillExtraContextMenuActions: () => { },
+ 			compositeSize: 0,
+-			iconSize: 20,
++			iconSize: TAMANHO_DO_ICONE_NA_BARRA_DE_TITULO,
+ 			overflowActionSize: 30,
+ 			colors: theme => ({
+ 				activeBackgroundColor: theme.getColor(TITLE_BAR_ACTIVE_BACKGROUND),

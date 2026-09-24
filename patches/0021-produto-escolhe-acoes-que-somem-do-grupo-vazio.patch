@@ -1,0 +1,82 @@
+diff --git a/src/vs/workbench/browser/parts/editor/editorGroupView.ts b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+index 3792926104f..98657f8cbfb 100644
+--- a/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -35,6 +35,8 @@ import { Separator, SubmenuAction } from '../../../../base/common/actions.js';
+ import { IMenuChangeEvent, IMenuService, MenuId } from '../../../../platform/actions/common/actions.js';
+ import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+ import { getActionBarActions, PrimaryAndSecondaryActions } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
++import { IAction } from '../../../../base/common/actions.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { createEditorTypeActions, getAvailableEditorTypes } from './editorTypePicker.js';
+@@ -175,7 +177,8 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 		@IHostService private readonly hostService: IHostService,
+ 		@IDialogService private readonly dialogService: IDialogService,
+ 		@IFileService private readonly fileService: IFileService,
+-		@ICommandService private readonly commandService: ICommandService
++		@ICommandService private readonly commandService: ICommandService,
++		@IProductService private readonly productService: IProductService
+ 	) {
+ 		super(themeService);
+ 
+@@ -449,7 +452,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 				'navigation'
+ 			);
+ 
+-			for (const action of [...actions.primary, ...actions.secondary]) {
++			for (const action of this.semAsEscondidasPeloProduto([...actions.primary, ...actions.secondary])) {
+ 				const keybinding = this.keybindingService.lookupKeybinding(action.id);
+ 				containerToolbar.push(action, { icon: true, label: false, keybinding: keybinding?.getLabel() });
+ 			}
+@@ -475,14 +478,48 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 		}
+ 
+ 		// Show it
++		//
++		// OFICINA patch 0021: o menu e montado AQUI, em vez de entregue ao servico por `menuId`,
++		// so para que a lista `editorTitleActionsToHide` do produto possa filtra-lo. Passar o
++		// `menuId` deixa a montagem dentro do servico, onde nao ha por onde tirar um item: o
++		// `getActions` do delegate PREPENDE acoes extras, nao substitui as do menu.
++		const menuDoGrupoVazio = this.menuService.createMenu(MenuId.EmptyEditorGroupContext, this.contextKeyService);
++		const acoesDoMenu = getActionBarActions(menuDoGrupoVazio.getActions({ arg: { groupId: this.id }, shouldForwardArgs: true }));
++		const acoes = this.semAsEscondidasPeloProduto([...acoesDoMenu.primary, ...acoesDoMenu.secondary]);
++		menuDoGrupoVazio.dispose();
++
+ 		this.contextMenuService.showContextMenu({
+-			menuId: MenuId.EmptyEditorGroupContext,
++			getActions: () => acoes,
+ 			contextKeyService: this.contextKeyService,
+ 			getAnchor: () => anchor,
+ 			onHide: () => this.focus()
+ 		});
+ 	}
+ 
++	/**
++	 * Tira as acoes que o produto pediu para esconder (OFICINA patch 0019, ampliado pelo 0021).
++	 *
++	 * ⚠️ POR QUE ISTO PRECISOU CHEGAR ATE AQUI. O 0019 filtrava so a fileira de acoes da aba. Com
++	 * `workbench.action.unlockEditorGroup` na lista, o cadeado de DESTRAVAR saiu da fileira — e o
++	 * menu de botao direito de um grupo VAZIO continuava oferecendo "Lock Group". Ou seja: dava
++	 * para travar por clique e nao dava para destravar por clique. Medido na tela em 21/09/2026,
++	 * no grupo vazio, e nao no codigo: no botao direito da ABA o item nunca esteve.
++	 *
++	 * A lista e a mesma de proposito. Duas listas para a mesma intencao e a lei da fonte unica
++	 * sendo quebrada com aviso previo: uma delas envelheceria.
++	 *
++	 * O que continua: os dois comandos na paleta. Quem travar de proposito por la destrava por la.
++	 */
++	private semAsEscondidasPeloProduto(acoes: IAction[]): IAction[] {
++		const esconder = this.productService.editorTitleActionsToHide;
++		if (!esconder?.length) {
++			return acoes;
++		}
++
++		const fora = new Set(esconder);
++		return acoes.filter(a => !fora.has(a.id));
++	}
++
+ 	private doTrackFocus(): void {
+ 
+ 		// Container

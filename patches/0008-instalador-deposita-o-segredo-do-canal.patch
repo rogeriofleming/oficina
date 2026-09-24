@@ -1,0 +1,34 @@
+diff --git a/build/win32/code.iss b/build/win32/code.iss
+index c6ac102b088..263aa40a4b4 100644
+--- a/build/win32/code.iss
++++ b/build/win32/code.iss
+@@ -81,6 +81,11 @@ Type: filesandordirs; Name: "{app}\bin"
+ Type: files; Name: "{app}\old_*"
+ Type: files; Name: "{app}\new_*"
+ Type: files; Name: "{app}\updating_version"
++; OFICINA: desinstalar leva o segredo do canal privado embora. Segredo esquecido em disco
++; depois de o programa sair da maquina e risco sem dono.
++; A pasta e a DESTA edicao ({#UserDataFolderName}, patch 0015): cada edicao apaga o que ela
++; mesma depositou, e nunca o que e da outra.
++Type: files; Name: "{userappdata}\{#UserDataFolderName}\canal-privado.txt"
+ 
+ [Tasks]
+ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+@@ -101,6 +106,17 @@ Source: "{#ExeBasename}.VisualElementsManifest.xml"; DestDir: "{code:GetDestDir}
+ Source: "tools\*"; DestDir: "{app}\{#VersionedResourcesFolder}\tools"; Flags: ignoreversion skipifsourcedoesntexist
+ Source: "policies\*"; DestDir: "{code:GetDestDir}\{#VersionedResourcesFolder}\policies"; Flags: ignoreversion skipifsourcedoesntexist
+ Source: "bin\{#TunnelApplicationName}.exe"; DestDir: "{code:GetDestDir}\bin"; DestName: "{code:GetBinDirTunnelApplicationFilename}"; Flags: ignoreversion skipifsourcedoesntexist
++; OFICINA: canal privado de atualizacao, por segredo de maquina.
++; Se houver um "canal-privado.txt" NA MESMA PASTA de onde este instalador foi aberto, ele e
++; copiado para a pasta de dados do usuario - que e exatamente onde o nucleo o procura
++; (userDataPath = %APPDATA%\<userDataFolderName, ou nameShort sem ele>; ver patches/0007 e
++; patches/0015, que e quem separa a pasta das duas edicoes). Sem o arquivo ao lado, nada
++; acontece: e assim que a edicao publica nunca tem canal privado nenhum.
++; `external` = a origem e um arquivo da maquina de quem instala, nao algo embutido aqui.
++; O segredo nunca entra no instalador, nunca vai para parametro de linha de comando (que
++; apareceria em lista de processos e no log do Setup) e nunca e escrito em log: ele so viaja
++; como arquivo e, depois, como cabecalho Authorization (que o nucleo mascara ao registrar).
++Source: "{src}\canal-privado.txt"; DestDir: "{userappdata}\{#UserDataFolderName}"; Flags: external skipifsourcedoesntexist ignoreversion
+ Source: "bin\{#ApplicationName}.cmd"; DestDir: "{code:GetDestDir}\bin"; DestName: "{code:GetBinDirApplicationCmdFilename}"; Flags: ignoreversion
+ Source: "bin\{#ApplicationName}"; DestDir: "{code:GetDestDir}\bin"; DestName: "{code:GetBinDirApplicationFilename}"; Flags: ignoreversion
+ Source: "{#ProductJsonPath}"; DestDir: "{code:GetDestDir}\{#VersionedResourcesFolder}\resources\app"; Flags: ignoreversion

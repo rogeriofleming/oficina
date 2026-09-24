@@ -1,0 +1,36 @@
+diff --git a/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts b/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
+index 0cb22b9cf17..d01237b86d0 100644
+--- a/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
++++ b/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
+@@ -996,12 +996,17 @@ export class GettingStartedPage extends EditorPane {
+ 				this.gettingStartedCategories = this.gettingStartedService.getWalkthroughs();
+ 				this.currentWalkthrough = this.gettingStartedCategories.find(category => category.id === editorInput.selectedCategory);
+ 				if (this.currentWalkthrough) {
++					// Name the tab after the walkthrough being shown, as the paths that
++					// scroll to a category and open the first one already do. Without
++					// this, a walkthrough opened by id keeps the generic "Welcome".
++					editorInput.walkthroughPageTitle = this.currentWalkthrough.walkthroughPageTitle;
+ 					this.buildCategorySlide(editorInput.selectedCategory, editorInput.selectedStep, preserveFocus);
+ 					this.setSlide('details');
+ 					return;
+ 				}
+ 			}
+ 			else {
++				editorInput.walkthroughPageTitle = this.currentWalkthrough.walkthroughPageTitle;
+ 				this.buildCategorySlide(editorInput.selectedCategory, editorInput.selectedStep, preserveFocus);
+ 				this.setSlide('details');
+ 				return;
+diff --git a/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedInput.ts b/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedInput.ts
+index a255e8459d0..6ab7eda3ca6 100644
+--- a/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedInput.ts
++++ b/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedInput.ts
+@@ -120,6 +120,9 @@ export class GettingStartedInput extends EditorInput {
+ 
+ 	set walkthroughPageTitle(value: string | undefined) {
+ 		this._walkthroughPageTitle = value;
++		// `getName()` reads this to title the tab; without firing, the editor keeps the
++		// previous name. `selectedCategory` right above already does the same.
++		this._onDidChangeLabel.fire();
+ 	}
+ 
+ 	get returnToCommand(): string | undefined {

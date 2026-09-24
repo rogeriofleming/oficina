@@ -1,0 +1,70 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index 43e145e..73612e6 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -159,6 +159,15 @@ export interface IProductConfiguration {
+ 
+ 	readonly dictationRuntime?: IDictationRuntimeProductConfig;
+ 
++	/**
++	 * Keep the activity bar to the product's own view containers: no Accounts and no Manage icons at its foot.
++	 *
++	 * Accounts can be hidden per profile, but only through a stored preference, and Manage has no setting at all.
++	 * A product whose activity bar is meant to hold only its own buttons sets this to `true`. The commands behind
++	 * both icons keep working (the command palette reaches settings, extensions and themes).
++	 */
++	readonly hideActivityBarGlobalActions?: boolean;
++
+ 	readonly mcpGallery?: {
+ 		readonly serviceUrl: string;
+ 		readonly itemWebUrl: string;
+diff --git a/src/vs/workbench/browser/parts/globalCompositeBar.ts b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+index 6aec4cf..5c903ef 100644
+--- a/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -70,6 +70,7 @@ export class GlobalCompositeBar extends Disposable {
+ 		@IInstantiationService private readonly instantiationService: IInstantiationService,
+ 		@IStorageService private readonly storageService: IStorageService,
+ 		@IExtensionService private readonly extensionService: IExtensionService,
++		@IProductService private readonly productService: IProductService,
+ 	) {
+ 		super();
+ 
+@@ -108,11 +109,14 @@ export class GlobalCompositeBar extends Disposable {
+ 			preventLoopNavigation: true
+ 		}));
+ 
+-		if (this.accountsVisibilityPreference) {
+-			this.globalActivityActionBar.push(this.accountAction, { index: GlobalCompositeBar.ACCOUNTS_ACTION_INDEX });
+-		}
++		// A product can keep the activity bar to its own view containers (see `hideActivityBarGlobalActions`).
++		if (!this.productService.hideActivityBarGlobalActions) {
++			if (this.accountsVisibilityPreference) {
++				this.globalActivityActionBar.push(this.accountAction, { index: GlobalCompositeBar.ACCOUNTS_ACTION_INDEX });
++			}
+ 
+-		this.globalActivityActionBar.push(this.globalActivityAction);
++			this.globalActivityActionBar.push(this.globalActivityAction);
++		}
+ 
+ 		this.registerListeners();
+ 	}
+@@ -134,10 +138,18 @@ export class GlobalCompositeBar extends Disposable {
+ 	}
+ 
+ 	getContextMenuActions(): IAction[] {
++		// With the global actions off (see `hideActivityBarGlobalActions`), an "Accounts" toggle here would show as
++		// checked and do nothing: the icon never comes back. The menu drops the item instead.
++		if (this.productService.hideActivityBarGlobalActions) {
++			return [];
++		}
+ 		return [toAction({ id: 'toggleAccountsVisibility', label: localize('accounts', "Accounts"), checked: this.accountsVisibilityPreference, run: () => this.accountsVisibilityPreference = !this.accountsVisibilityPreference })];
+ 	}
+ 
+ 	private toggleAccountsActivity() {
++		if (this.productService.hideActivityBarGlobalActions) {
++			return;
++		}
+ 		if (this.globalActivityActionBar.length() === 2 && this.accountsVisibilityPreference) {
+ 			return;
+ 		}

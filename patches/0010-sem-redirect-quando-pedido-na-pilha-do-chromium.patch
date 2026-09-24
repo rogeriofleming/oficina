@@ -1,0 +1,34 @@
+diff --git a/src/vs/platform/request/node/requestService.ts b/src/vs/platform/request/node/requestService.ts
+index 45209759090..060f41db306 100644
+--- a/src/vs/platform/request/node/requestService.ts
++++ b/src/vs/platform/request/node/requestService.ts
+@@ -204,7 +204,7 @@ async function nodeRequestAttempt(options: NodeRequestOptions, token: Cancellati
+ 			? options.getRawRequest(options)
+ 			: await getNodeRequest(options);
+ 
+-		const opts: https.RequestOptions & { cache?: 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached' } = {
++		const opts: https.RequestOptions & { cache?: 'default' | 'no-store' | 'reload' | 'no-cache' | 'force-cache' | 'only-if-cached'; redirect?: 'follow' | 'error' | 'manual' } = {
+ 			hostname: endpoint.hostname,
+ 			port: endpoint.port ? parseInt(endpoint.port) : (endpoint.protocol === 'https:' ? 443 : 80),
+ 			protocol: endpoint.protocol,
+@@ -223,6 +223,20 @@ async function nodeRequestAttempt(options: NodeRequestOptions, token: Cancellati
+ 			opts.cache = 'no-store';
+ 		}
+ 
++		// OFICINA: `followRedirects: 0` precisa valer TAMBEM na pilha de rede do Chromium.
++		//
++		// MEDIDO em 12/09/2026, com o produto instalado: um pedido feito com `followRedirects: 0`
++		// SEGUIU um 302 para outro host e entregou o cabecalho `Authorization` la. O motivo: no
++		// processo principal, `electron-utility/requestService.ts` troca a funcao de requisicao
++		// por `net.request` do Electron, e o Chromium segue redirecionamento POR DENTRO, antes de
++		// a resposta chegar ao callback abaixo - entao a checagem `followRedirects > 0` daqui
++		// nunca ve o 302. `redirect: 'error'` faz o proprio Chromium recusar o salto. No caminho
++		// de Node puro a opcao e ignorada, e a checagem de baixo continua valendo.
++		// Ver patches/0010-sem-redirect-quando-pedido-na-pilha-do-chromium.md.
++		if (options.followRedirects === 0) {
++			opts.redirect = 'error';
++		}
++
+ 		const req = rawRequest(opts, (res: http.IncomingMessage) => {
+ 			const followRedirects: number = isNumber(options.followRedirects) ? options.followRedirects : 3;
+ 			if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && followRedirects > 0 && res.headers['location']) {

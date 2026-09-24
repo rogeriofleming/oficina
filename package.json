@@ -1,0 +1,13 @@
+{
+  "name": "oficina",
+  "private": true,
+  "description": "Ferramentas de build e teste da OFICINA. O editor em si e compilado a partir do nucleo do VS Code; este package.json existe so para os testes.",
+  "license": "MIT",
+  "scripts": {
+    "fumaca": "node testes/fumaca.mjs",
+    "regressao": "node testes/regressao.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

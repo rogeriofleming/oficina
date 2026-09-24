@@ -1,0 +1,33 @@
+# node_modules de qualquer extensao embutida: o Agent SDK traz binario junto e
+# isso nao pode entrar no repositorio. Só o package-lock viaja.
+node_modules/
+!extensoes/**/package-lock.json
+
+# O caminho da camada privada e desta maquina, nao do projeto.
+camada.local.txt
+
+# Saida de build e log nunca sao versionados.
+out/
+dist/
+*.log
+
+# Os retratos do painel (testes/retrato_painel.mjs). Sao para o olho de quem constroi,
+# nao artefato de produto: mudam a cada rodada e pesam. O caminho e configuravel por
+# OFICINA_RETRATOS.
+retratos/
+
+# ⚠️ ARTEFATO DE BUILD DO PYTHON. O `.pyc` do gerador de temas entrou no repositorio uma vez
+# (11/09/2026) e a revisao final o pegou: o CPython grava o CAMINHO ABSOLUTO do fonte dentro do
+# bytecode, entao o arquivo carregava o caminho da maquina da casa. O detector de vazamento acusou
+# porque le `.pyc` como TEXTO -- e e para continuar assim; quem tinha de barrar era esta linha.
+__pycache__/
+*.pyc
+
+# Rascunho de trabalho (sondas de medicao, fotos de revisao, recortes). Nunca vai para o build.
+#
+# ⚠️ POR QUE ENTROU AQUI (21/09/2026): a varredura de vazamento lista todo arquivo NAO RASTREADO
+# como aviso, e sai vermelha. Com a pasta de rascunho fora do git, uma rodada de revisores (que
+# escreve sondas e fotos aqui dentro) deixava a bateria INTEIRA vermelha — e vermelho rotineiro
+# deixa de ser sinal. Achado por revisor independente. O que precisa ser guardado sai daqui para o
+# dossie visual; o resto e descartavel por definicao.
+tmp/

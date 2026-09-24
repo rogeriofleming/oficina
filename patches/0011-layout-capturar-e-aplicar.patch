@@ -1,0 +1,204 @@
+diff --git a/src/vs/workbench/browser/actions/layoutActions.ts b/src/vs/workbench/browser/actions/layoutActions.ts
+index d03a5c1..1d52848 100644
+--- a/src/vs/workbench/browser/actions/layoutActions.ts
++++ b/src/vs/workbench/browser/actions/layoutActions.ts
+@@ -8,7 +8,7 @@ import { MenuId, MenuRegistry, registerAction2, Action2 } from '../../../platfor
+ import { Categories } from '../../../platform/action/common/actionCommonCategories.js';
+ import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+ import { alert } from '../../../base/browser/ui/aria/aria.js';
+-import { EditorActionsLocation, EditorTabsMode, IWorkbenchLayoutService, LayoutSettings, Parts, Position, ZenModeSettings, positionToString } from '../../services/layout/browser/layoutService.js';
++import { EditorActionsLocation, EditorTabsMode, IWorkbenchLayoutService, LayoutSettings, PanelAlignment, Parts, Position, ZenModeSettings, positionToString } from '../../services/layout/browser/layoutService.js';
+ import { ServicesAccessor, IInstantiationService } from '../../../platform/instantiation/common/instantiation.js';
+ import { KeyMod, KeyCode } from '../../../base/common/keyCodes.js';
+ import { isWindows, isLinux, isWeb, isMacintosh, isNative } from '../../../base/common/platform.js';
+@@ -21,7 +21,7 @@ import { IDialogService } from '../../../platform/dialogs/common/dialogs.js';
+ import { IPaneCompositePartService } from '../../services/panecomposite/browser/panecomposite.js';
+ import { ToggleAuxiliaryBarAction } from '../parts/auxiliarybar/auxiliaryBarActions.js';
+ import { TogglePanelAction } from '../parts/panel/panelActions.js';
+-import { ICommandService } from '../../../platform/commands/common/commands.js';
++import { CommandsRegistry, ICommandService } from '../../../platform/commands/common/commands.js';
+ import { AuxiliaryBarVisibleContext, PanelAlignmentContext, PanelVisibleContext, SideBarVisibleContext, FocusedViewContext, InEditorZenModeContext, IsMainEditorCenteredLayoutContext, MainEditorAreaVisibleContext, IsMainWindowFullscreenContext, PanelPositionContext, IsAuxiliaryWindowFocusedContext, IsSessionsWindowContext, TitleBarStyleContext, IsAuxiliaryWindowContext, CustomMenuBarVisibleContext } from '../../common/contextkeys.js';
+ import { Codicon } from '../../../base/common/codicons.js';
+ import { ThemeIcon } from '../../../base/common/themables.js';
+@@ -1615,3 +1615,181 @@ registerAction2(class CustomizeLayoutAction extends Action2 {
+ 		quickPick.show();
+ 	}
+ });
++
++//#region Layout snapshot (capture and apply)
++
++// A product built from this source can offer named layout presets ("save the screen the way I left
++// it, and bring it back when something undoes it"). Almost everything such a preset has to restore
++// lives in workbench storage that no extension can read or write: which parts are visible, how big
++// they are, where the panel sits, and where each view container and each view was dragged to.
++//
++// These two internal commands expose exactly that, through the public methods of the layout and
++// view descriptor services, and nothing else. Settings (status bar, activity bar, tabs, minimap)
++// are not here on purpose: an extension already reads and writes those through its own API.
++//
++// Apply is defensive: the payload may come from an older build or from a hand-edited file. Every
++// field is checked; unknown parts, containers and views are skipped and reported back, never
++// guessed, and sizes outside a sane range are ignored.
++
++interface ILayoutSnapshotPart {
++	visible: boolean;
++	width: number;
++	height: number;
++}
++
++interface ILayoutSnapshot {
++	version: 1;
++	/**
++	 * How big the window is right now. A product computes its own proportional defaults from it (the
++	 * workbench sizes parts as a fraction of the window, and an extension cannot measure the window).
++	 * Capture only: apply ignores it.
++	 */
++	window: { width: number; height: number };
++	parts: { [part: string]: ILayoutSnapshotPart };
++	panelPosition: Position;
++	panelAlignment: PanelAlignment;
++	containers: { [containerId: string]: ViewContainerLocation };
++	views: { [viewId: string]: string };
++}
++
++const LAYOUT_SNAPSHOT_PARTS = [Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART] as const;
++const LAYOUT_SNAPSHOT_LOCATIONS = [ViewContainerLocation.Sidebar, ViewContainerLocation.Panel, ViewContainerLocation.AuxiliaryBar];
++const LAYOUT_SNAPSHOT_PANEL_POSITIONS = [Position.LEFT, Position.RIGHT, Position.BOTTOM, Position.TOP];
++const LAYOUT_SNAPSHOT_PANEL_ALIGNMENTS: PanelAlignment[] = ['left', 'center', 'right', 'justify'];
++// The prefix the view descriptor service gives to the containers it creates when a view is dragged to a new place.
++const LAYOUT_SNAPSHOT_GENERATED_PREFIX = 'workbench.views.service.';
++
++CommandsRegistry.registerCommand('_workbench.layout.captureSnapshot', (accessor: ServicesAccessor): ILayoutSnapshot => {
++	const layoutService = accessor.get(IWorkbenchLayoutService);
++	const viewDescriptorService = accessor.get(IViewDescriptorService);
++
++	const parts: { [part: string]: ILayoutSnapshotPart } = {};
++	for (const part of LAYOUT_SNAPSHOT_PARTS) {
++		const size = layoutService.getSize(part);
++		parts[part] = { visible: layoutService.isVisible(part), width: size.width, height: size.height };
++	}
++
++	const containers: { [containerId: string]: ViewContainerLocation } = {};
++	const views: { [viewId: string]: string } = {};
++	for (const location of LAYOUT_SNAPSHOT_LOCATIONS) {
++		for (const container of viewDescriptorService.getViewContainersByLocation(location)) {
++			containers[container.id] = location;
++			for (const view of viewDescriptorService.getViewContainerModel(container).allViewDescriptors) {
++				views[view.id] = container.id;
++			}
++		}
++	}
++
++	return {
++		version: 1,
++		window: { width: Math.round(layoutService.mainContainerDimension.width), height: Math.round(layoutService.mainContainerDimension.height) },
++		parts,
++		panelPosition: layoutService.getPanelPosition(),
++		panelAlignment: layoutService.getPanelAlignment(),
++		containers,
++		views
++	};
++});
++
++CommandsRegistry.registerCommand('_workbench.layout.applySnapshot', (accessor: ServicesAccessor, snapshot: unknown): { applied: string[]; skipped: string[] } => {
++	const layoutService = accessor.get(IWorkbenchLayoutService);
++	const viewDescriptorService = accessor.get(IViewDescriptorService);
++	const applied: string[] = [];
++	const skipped: string[] = [];
++
++	if (!snapshot || typeof snapshot !== 'object' || (snapshot as ILayoutSnapshot).version !== 1) {
++		skipped.push('snapshot (unknown format)');
++		return { applied, skipped };
++	}
++	const s = snapshot as ILayoutSnapshot;
++	const isSize = (value: unknown): value is number => typeof value === 'number' && isFinite(value) && value >= 50 && value <= 10000;
++
++	// Where things live comes first: moving a container changes what each part shows.
++	if (s.containers && typeof s.containers === 'object') {
++		for (const [id, location] of Object.entries(s.containers)) {
++			const container = viewDescriptorService.getViewContainerById(id);
++			if (!container && id.startsWith(LAYOUT_SNAPSHOT_GENERATED_PREFIX)) {
++				// A generated container is recreated below, from the views that lived in it.
++				continue;
++			}
++			if (!container || !LAYOUT_SNAPSHOT_LOCATIONS.includes(location)) {
++				skipped.push(`container ${id}`);
++				continue;
++			}
++			if (viewDescriptorService.getViewContainerLocation(container) !== location) {
++				viewDescriptorService.moveViewContainerToLocation(container, location, undefined, 'layoutSnapshot');
++				applied.push(`container ${id}`);
++			}
++		}
++	}
++
++	// A view dragged to a new place lives in a GENERATED container, and the view descriptor service
++	// deletes that container when it empties or when view locations are reset. Its id cannot be brought
++	// back, so the first view of the group creates a new container at the saved location and the others
++	// follow it there.
++	const recreated = new Map<string, NonNullable<ReturnType<IViewDescriptorService['getViewContainerById']>>>();
++	if (s.views && typeof s.views === 'object') {
++		for (const [viewId, containerId] of Object.entries(s.views)) {
++			const view = viewDescriptorService.getViewDescriptorById(viewId);
++			let container = typeof containerId === 'string' ? (viewDescriptorService.getViewContainerById(containerId) ?? recreated.get(containerId) ?? null) : null;
++			const savedLocation = typeof containerId === 'string' && s.containers && typeof s.containers === 'object' ? s.containers[containerId] : undefined;
++			if (view && !container && typeof containerId === 'string' && containerId.startsWith(LAYOUT_SNAPSHOT_GENERATED_PREFIX) && savedLocation !== undefined && LAYOUT_SNAPSHOT_LOCATIONS.includes(savedLocation)) {
++				viewDescriptorService.moveViewToLocation(view, savedLocation, 'layoutSnapshot');
++				const created = viewDescriptorService.getViewContainerByViewId(viewId);
++				if (created) {
++					recreated.set(containerId, created);
++					applied.push(`view ${viewId}`);
++					continue;
++				}
++			}
++			if (!view || !container) {
++				skipped.push(`view ${viewId}`);
++				continue;
++			}
++			if (viewDescriptorService.getViewContainerByViewId(viewId)?.id !== container.id) {
++				viewDescriptorService.moveViewsToContainer([view], container, undefined, 'layoutSnapshot');
++				applied.push(`view ${viewId}`);
++			}
++		}
++	}
++
++	// Only when it changes: setPanelPosition shows the panel to move it (and showing a panel whose view is
++	// the terminal creates a shell), even when the position is already the saved one.
++	if (LAYOUT_SNAPSHOT_PANEL_POSITIONS.includes(s.panelPosition)) {
++		if (s.panelPosition !== layoutService.getPanelPosition()) {
++			layoutService.setPanelPosition(s.panelPosition);
++		}
++		applied.push('panel position');
++	} else {
++		skipped.push('panel position');
++	}
++	// Alignment only means something with the panel at the top or bottom: setPanelAlignment moves a side panel
++	// to the bottom, which would undo the saved side position right above.
++	if (LAYOUT_SNAPSHOT_PANEL_ALIGNMENTS.includes(s.panelAlignment)) {
++		const position = layoutService.getPanelPosition();
++		if ((position === Position.BOTTOM || position === Position.TOP) && s.panelAlignment !== layoutService.getPanelAlignment()) {
++			layoutService.setPanelAlignment(s.panelAlignment);
++		}
++		applied.push('panel alignment');
++	} else {
++		skipped.push('panel alignment');
++	}
++
++	// Visibility before size: a hidden part cannot be sized.
++	for (const part of LAYOUT_SNAPSHOT_PARTS) {
++		const saved = s.parts && typeof s.parts === 'object' ? s.parts[part] : undefined;
++		if (!saved || typeof saved.visible !== 'boolean') {
++			skipped.push(`part ${part}`);
++			continue;
++		}
++		layoutService.setPartHidden(!saved.visible, part);
++		if (saved.visible && isSize(saved.width) && isSize(saved.height)) {
++			layoutService.setSize(part, { width: saved.width, height: saved.height });
++		}
++		applied.push(`part ${part}`);
++	}
++
++	return { applied, skipped };
++});
++
++//#endregion

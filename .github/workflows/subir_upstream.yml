@@ -1,0 +1,77 @@
+# A subida de versão do núcleo, sozinha — e sem publicar nada.
+#
+# Roda no começo de cada trimestre e por botão ("Run workflow" = subir agora, para CVE crítico ou
+# extensão essencial que passou a exigir núcleo mais novo). O robô escolhe a tag estável mais nova,
+# sobe, compila, roda fumaça e regressão, empacota, e deixa PRONTOS um PR em rascunho e uma Release
+# em rascunho. Se um patch não aplicar, ele para e o relatório aparece no resumo desta execução.
+#
+# ⚠️ NADA PUBLICA SOZINHO: publicar a Release e liberar o canal de atualização são atos de uma pessoa.
+# ⚠️ Este workflow não usa segredo nenhum além do token que o próprio GitHub dá à execução.
+
+name: subir o núcleo
+
+on:
+  schedule:
+    - cron: '0 9 1 1,4,7,10 *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag estável do núcleo (X.Y.Z). Vazio = a mais nova.'
+        required: false
+        default: ''
+
+# Só o que o robô precisa: escrever branch/PR e criar o rascunho da Release.
+permissions:
+  contents: write
+  pull-requests: write
+
+# Duas subidas ao mesmo tempo disputariam a mesma branch e o mesmo rascunho.
+concurrency:
+  group: subir-o-nucleo
+  cancel-in-progress: false
+
+jobs:
+  subir:
+    # ⚠️ A CADÊNCIA NASCE DESLIGADA. Um workflow agendado vale a partir do momento em que chega ao
+    # GitHub — e compilar custa minutos (em dobro, em repositório privado). Enquanto o projeto não
+    # estreia, o agendado só roda com a variável do repositório OFICINA_ROBO_LIGADO = true. O botão
+    # (workflow_dispatch) funciona sempre: é uma pessoa pedindo.
+    if: github.event_name == 'workflow_dispatch' || vars.OFICINA_ROBO_LIGADO == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 300
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1 (fixado por SHA: tag pode ser remarcada)
+        with:
+          fetch-depth: 0
+
+      # A pasta de trabalho do build fica na pasta temporaria que o proprio runner informa (sem espaco
+      # no caminho, que e exigencia do build do nucleo).
+      - name: pasta de trabalho do build
+        run: '"OFICINA_BUILD=$env:RUNNER_TEMP\oficina-build" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV'
+
+      - name: quem assina o commit da subida
+        run: |
+          git config user.name "OFICINA"
+          git config user.email "oficina@users.noreply.github.com"
+
+      # ⚠️ A tag digitada no botão entra por VARIÁVEL, nunca colada no comando: `${{ }}` dentro de
+      # `run:` é texto substituído antes do shell ler, e um valor com aspas viraria comando.
+      - name: planejar (só lê)
+        env:
+          TAG_PEDIDA: ${{ inputs.tag }}
+        run: node scripts/robo_upstream.mjs --planejar --tag "$env:TAG_PEDIDA"
+
+      - name: subir, compilar, testar, empacotar e preparar os rascunhos
+        env:
+          TAG_PEDIDA: ${{ inputs.tag }}
+        run: node scripts/robo_upstream.mjs --executar --tag "$env:TAG_PEDIDA"
+
+      - name: guardar os logs e o relatório
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: subida-logs
+          path: ${{ env.OFICINA_BUILD }}/log
+          retention-days: 30

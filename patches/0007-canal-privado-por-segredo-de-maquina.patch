@@ -1,0 +1,169 @@
+diff --git a/src/vs/platform/update/electron-main/abstractUpdateService.ts b/src/vs/platform/update/electron-main/abstractUpdateService.ts
+index 2749d7beb45..0d9d14a49f2 100644
+--- a/src/vs/platform/update/electron-main/abstractUpdateService.ts
++++ b/src/vs/platform/update/electron-main/abstractUpdateService.ts
+@@ -3,8 +3,10 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import { readFileSync } from 'fs';
+ import * as os from 'os';
+ import { CancelablePromise, IntervalTimer, Throttler, timeout } from '../../../base/common/async.js';
++import { join } from '../../../base/common/path.js';
+ import { CancellationToken, CancellationTokenSource } from '../../../base/common/cancellation.js';
+ import { isCancellationError } from '../../../base/common/errors.js';
+ import { Emitter, Event } from '../../../base/common/event.js';
+@@ -646,6 +648,87 @@ export abstract class AbstractUpdateService extends Disposable implements IUpdat
+ 		return this.doIsLatestVersion(commit, token);
+ 	}
+ 
++	/**
++	 * OFICINA: o segredo do canal PRIVADO desta maquina, quando existe.
++	 *
++	 * Um arquivo de uma linha em `<userDataPath>/canal-privado.txt`. Sem ele, tudo se
++	 * comporta exatamente como no codigo de origem: nenhum cabecalho a mais, nenhuma
++	 * diferenca de rede. Por isso a edicao publica nao muda de comportamento.
++	 *
++	 * Ver patches/0007-canal-privado-por-segredo-de-maquina.md.
++	 */
++	protected lerSegredoDoCanal(): string | undefined {
++		// OFICINA: edicao SEM canal de update (sem `updateUrl` no produto) nunca le o arquivo. Desde o
++		// patch 0015 cada edicao tem a SUA pasta de dados, mas numa maquina que rodou a edicao da equipe
++		// antes disso o arquivo ficou na pasta que hoje e da publica. Esta e a segunda trava, alem da
++		// guarda de origem abaixo.
++		if (!this.productService.updateUrl) {
++			return undefined;
++		}
++		try {
++			const bruto = readFileSync(join(this.environmentMainService.userDataPath, 'canal-privado.txt'), 'utf8').trim();
++			// Formato fechado de proposito: um segredo malformado (ou um arquivo que alguem
++			// encheu de texto) nunca viaja como cabecalho.
++			return /^[A-Za-z0-9._~-]{16,512}$/.test(bruto) ? bruto : undefined;
++		} catch {
++			return undefined;   // sem arquivo = sem canal privado
++		}
++	}
++
++	/**
++	 * OFICINA: cabecalhos da requisicao de update, com o segredo do canal privado quando houver.
++	 *
++	 * O segredo vai no cabecalho `Authorization`, e NAO no caminho da URL, por um motivo
++	 * medido no proprio nucleo: em `platform/request/common/request.ts`, a classe
++	 * `LoggableHeaders` mascara (`*****`) exatamente `authorization` e `proxy-authorization`
++	 * antes de registrar a requisicao - e NAO mascara mais nada, nem a URL. Segredo no
++	 * caminho da URL seria gravado em log por qualquer rodada com `--log trace`, e tambem
++	 * pelos registros de quem serve a requisicao.
++	 *
++	 * E ele so viaja para a MESMA origem configurada em `updateUrl`: o pacote a baixar vem
++	 * de um endereco que o SERVIDOR escolhe (campo `url` do manifesto). Sem esta guarda,
++	 * bastaria o manifesto apontar para outro host para o segredo ser entregue a ele.
++	 */
++	protected cabecalhosDeUpdate(urlDestino: string | undefined): Record<string, string> | undefined {
++		const base = getUpdateRequestHeaders(this.productService.version);
++		const segredo = this.lerSegredoDoCanal();
++		// `urlDestino` e opcional nos dois pontos de chamada (`buildUpdateFeedUrl` devolve
++		// `string | undefined`, e `IUpdate.url` e opcional). Sem este tipo, o `tsc` reprova -
++		// e o EMPACOTAMENTO nao reprova, porque transpila sem checar tipo.
++		if (!segredo || !urlDestino) {
++			return base;
++		}
++
++		let mesmaOrigem = false;
++		try {
++			mesmaOrigem = new URL(urlDestino).origin === new URL(this.productService.updateUrl!).origin;
++		} catch {
++			mesmaOrigem = false;   // updateUrl ausente ou URL invalida: nunca manda o segredo
++		}
++
++		return mesmaOrigem ? { ...(base ?? {}), 'Authorization': `Bearer ${segredo}` } : base;
++	}
++
++	/**
++	 * OFICINA: as opcoes de requisicao de update - cabecalhos MAIS a proibicao de redirect
++	 * quando o pedido leva o segredo do canal privado.
++	 *
++	 * POR QUE O `followRedirects: 0` E OBRIGATORIO AQUI, e por que a guarda de origem sozinha
++	 * NAO BASTAVA (achado de uma revisao independente, 12/09/2026):
++	 * `platform/request/node/requestService.ts` segue ate 3 redirects por padrao e repassa
++	 * `{ ...options }` INTEIRO para o novo endereco - cabecalhos incluidos. Como quem responde
++	 * o canal tambem escolhe o `Location`, um servidor comprometido devolveria
++	 * `302 -> https://outro.host/x` e receberia o `Authorization` com o segredo da maquina. A
++	 * guarda de origem e avaliada UMA VEZ, na montagem do pedido, e nao acompanha o salto.
++	 *
++	 * Sem segredo, nada muda: o padrao de 3 redirects continua valendo - e precisa continuar,
++	 * porque um canal publico servido por GitHub Releases responde exatamente com redirect.
++	 */
++	protected opcoesDeUpdate(urlDestino: string | undefined): { headers?: Record<string, string>; followRedirects?: number } {
++		const headers = this.cabecalhosDeUpdate(urlDestino);
++		return headers?.['Authorization'] ? { headers, followRedirects: 0 } : { headers };
++	}
++
+ 	protected async doIsLatestVersion(commit?: string, token: CancellationToken = CancellationToken.None): Promise<boolean | undefined> {
+ 		if (!this.quality) {
+ 			return undefined;
+@@ -663,11 +746,14 @@ export abstract class AbstractUpdateService extends Disposable implements IUpdat
+ 			return undefined;
+ 		}
+ 
+-		const headers = getUpdateRequestHeaders(this.productService.version);
+-		this.logService.trace('update#isLatestVersion() - checking update server', { url, headers });
++		const opcoes = this.opcoesDeUpdate(url);
++		// OFICINA: os CABECALHOS sairam deste registro de proposito. Aqui eles eram gravados
++		// crus - ao contrario do `requestService`, que passa por `LoggableHeaders` e mascara
++		// `authorization`. Com o canal privado, gravar crus poria o segredo da maquina no log.
++		this.logService.trace('update#isLatestVersion() - checking update server', { url });
+ 
+ 		try {
+-			const context = await this.requestService.request({ url, headers, callSite: 'updateService.isLatestVersion' }, token);
++			const context = await this.requestService.request({ url, ...opcoes, callSite: 'updateService.isLatestVersion' }, token);
+ 			const statusCode = context.res.statusCode;
+ 			this.logService.trace('update#isLatestVersion() - response', { statusCode });
+ 			// The update server replies with 204 (No Content) when no update is available.
+diff --git a/src/vs/platform/update/electron-main/updateService.win32.ts b/src/vs/platform/update/electron-main/updateService.win32.ts
+index 216b808fdb4..9c930e2989e 100644
+--- a/src/vs/platform/update/electron-main/updateService.win32.ts
++++ b/src/vs/platform/update/electron-main/updateService.win32.ts
+@@ -34,7 +34,10 @@ import { asJson, IRequestService } from '../../request/common/request.js';
+ import { IApplicationStorageMainService } from '../../storage/electron-main/storageMainService.js';
+ import { ITelemetryService } from '../../telemetry/common/telemetry.js';
+ import { AvailableForDownload, DisablementReason, IUpdate, State, StateType, UpdateType } from '../common/update.js';
+-import { AbstractUpdateService, createUpdateURL, getUpdateRequestHeaders, IUpdateURLOptions, UpdateErrorClassification } from './abstractUpdateService.js';
++// OFICINA: `getUpdateRequestHeaders` saiu desta lista porque `cabecalhosDeUpdate` (na classe
++// base) passou a ser o unico caminho daqui. Import que sobra e erro de compilacao (TS6133) que
++// o EMPACOTAMENTO nao acusa - ja custou um build neste projeto.
++import { AbstractUpdateService, createUpdateURL, IUpdateURLOptions, UpdateErrorClassification } from './abstractUpdateService.js';
+ import { getRelaunchArguments } from './updateRelaunchArguments.js';
+ import { getWin32UpdateType } from './win32UpdateType.js';
+ 
+@@ -245,7 +248,9 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
+ 		const cts = this.checkCancellationTokenSource = new CancellationTokenSource();
+ 		const token = cts.token;
+ 
+-		const headers = getUpdateRequestHeaders(this.productService.version);
++		// OFICINA: `cabecalhosDeUpdate` = os cabecalhos de origem MAIS o segredo do canal
++		// privado (quando existe), no `Authorization` e so para a origem do `updateUrl`.
++		const headers = this.cabecalhosDeUpdate(url);
+ 		const promise = this.requestService.request({ url, headers, callSite: 'updateService.win32.checkForUpdates' }, token)
+ 			.then<IUpdate | null>(asJson)
+ 			.then(update => {
+@@ -285,7 +290,7 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
+ 							if (exists) {
+ 								// OFICINA: o pacote que JA ESTAVA no cache tambem e conferido.
+ 								//
+-								// Aqui o codigo de origem devolvia o caminho direto, SEM hash - e
++								// Aqui o codigo de origem devolvia o caminho direto, SEM hash - e
+ 								// esse galho e alcancavel por quem escreve no %TEMP% do proprio
+ 								// usuario (extensao, script), porque o nome do arquivo e previsivel
+ 								// (o commit sai do manifesto). O patch 0006 fecha a omissao do campo
+@@ -312,7 +317,10 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
+ 
+ 							const downloadPath = `${updatePackagePath}.tmp`;
+ 
+-							return this.requestService.request({ url: update.url, callSite: 'updateService.win32.downloadUpdate' }, token)
++							// OFICINA: o DOWNLOAD tambem leva o segredo do canal privado - senao o
++							// pacote seria o unico pedido anonimo, e o canal da equipe teria de
++							// servir arquivo sem pedir nada. A guarda de origem mora no helper.
++							return this.requestService.request({ url: update.url, ...this.opcoesDeUpdate(update.url), callSite: 'updateService.win32.downloadUpdate' }, token)
+ 								.then(context => {
+ 									// Get total size from Content-Length header
+ 									const contentLengthHeader = context.res.headers['content-length'];

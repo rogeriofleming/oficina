@@ -1,0 +1,55 @@
+diff --git a/src/vs/platform/update/electron-main/updateService.win32.ts b/src/vs/platform/update/electron-main/updateService.win32.ts
+index 7628ad1ef04..216b808fdb4 100644
+--- a/src/vs/platform/update/electron-main/updateService.win32.ts
++++ b/src/vs/platform/update/electron-main/updateService.win32.ts
+@@ -281,9 +281,29 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
+ 
+ 				return this.cleanup(update.version).then(() => {
+ 					return this.getUpdatePackagePath(update.version).then(updatePackagePath => {
+-						return pfs.Promises.exists(updatePackagePath).then(exists => {
++						return pfs.Promises.exists(updatePackagePath).then(async exists => {
+ 							if (exists) {
+-								return Promise.resolve(updatePackagePath);
++								// OFICINA: o pacote que JA ESTAVA no cache tambem e conferido.
++								//
++								// Aqui o codigo de origem devolvia o caminho direto, SEM hash - e
++								// esse galho e alcancavel por quem escreve no %TEMP% do proprio
++								// usuario (extensao, script), porque o nome do arquivo e previsivel
++								// (o commit sai do manifesto). O patch 0006 fecha a omissao do campo
++								// pelo servidor; sem esta conferencia, a promessa "pacote adulterado e
++								// recusado" continuava falsa pelo caminho do cache.
++								// Achado por uma revisao de seguranca independente em 12/09/2026.
++								// Ver patches/0006-update-exige-hash.md.
++								try {
++									if (!update.sha256hash) {
++										throw new Error('o servidor nao informou o sha256 do pacote');
++									}
++									await checksum(updatePackagePath, update.sha256hash);
++									return updatePackagePath;
++								} catch (err) {
++									this.logService.warn(`update#doCheckForUpdates - pacote em cache recusado (${basename(updatePackagePath)}); vou apagar e baixar de novo`, err);
++									await this.unlink(updatePackagePath);
++									// Segue para o caminho normal de download, abaixo.
++								}
+ 							}
+ 
+ 							if (this.deferAutomaticDownload(update, explicit)) {
+@@ -319,7 +339,17 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
+ 									return this.fileService.writeFile(URI.file(downloadPath), progressStream)
+ 										.finally(() => progressDelayer.dispose());
+ 								})
+-								.then(update.sha256hash ? () => checksum(downloadPath, update.sha256hash) : () => undefined)
++								.then(() => {
++									// OFICINA: o hash e SEMPRE conferido. No upstream esta linha era um ternario
++									// (`update.sha256hash ? checksum(...) : undefined`), o que deixava a verificacao
++									// nas maos de QUEM SERVE o manifesto: bastava omitir o campo para o pacote ser
++									// baixado e instalado sem conferencia nenhuma, sem erro e sem aviso.
++									// Ver patches/0006-update-exige-hash.md.
++									if (!update.sha256hash) {
++										throw new Error('Atualizacao recusada: o servidor nao informou o sha256 do pacote, entao nao ha como conferir se ele chegou inteiro.');
++									}
++									return checksum(downloadPath, update.sha256hash);
++								})
+ 								.then(() => pfs.Promises.rename(downloadPath, updatePackagePath, false /* no retry */))
+ 								.then(() => updatePackagePath);
+ 						});

@@ -1,0 +1,641 @@
+{
+  "name": "oficina-claude",
+  "displayName": "OFICINA",
+  "description": "Os atalhos da conversa e a tela de abertura do produto.",
+  "__porqueNaoTemMaisConfiguracao": [
+    "Os padroes de interface moravam AQUI, em contributes.configurationDefaults, e",
+    "voltaram para o product.json em 06/09/2026 — junto com o patch que faz o desktop",
+    "ler `configurationDefaults` do produto (patches/0001-...).",
+    "",
+    "O motivo nao foi organizacao: uma extensao NAO CONSEGUE cumprir este papel. Ela e",
+    "registrada depois que o layout e a barra de titulo ja decidiram o que mostrar, e",
+    "seus padroes so alcancam a primeira pintura por um cache que esta VAZIO num perfil",
+    "novo. Resultado medido: `window.menuBarVisibility` e",
+    "`workbench.secondarySideBar.defaultVisibility` eram simplesmente ignorados na",
+    "primeira abertura de uma instalacao nova — que e justamente a abertura que forma a",
+    "impressao. O que 'funcionava' funcionava por chegar a tempo, nao por garantia.",
+    "",
+    "Keybindings continuam aqui: esses o registro de extensao serve bem."
+  ],
+  "__porqueOCtrlTNaoChamaAExtensaoDireto": [
+    "O Ctrl+T aponta para o comando NOSSO (`oficina.abrirConversaOuExplicar`), nao para",
+    "`claude-vscode.editor.open`. Num computador onde a extensao do Claude Code ainda nao",
+    "foi instalada, o comando dela nao existe: a tecla nao fazia nada e nao dizia nada.",
+    "O nosso tenta abrir a conversa e, se o comando nao existir, explica o que falta.",
+    "Mesma correcao das outras duas portas (tela de boas-vindas e botao da barra), 06/09/2026."
+  ],
+  "version": "0.0.1",
+  "publisher": "oficina",
+  "engines": {
+    "vscode": "^1.136.0"
+  },
+  "categories": [
+    "Keymaps"
+  ],
+  "main": "./extensao.js",
+  "__porqueAApiPropostaDoNavegador": [
+    "V17: a vista Navegador usa o navegador DO EDITOR (emulacao de tela, densidade, toque e agente do",
+    "navegador no processo principal), e nao um iframe numa webview. A extensao chega a ele pela API",
+    "proposta `browser` (abrir a aba e uma sessao CDP); os comandos de emulacao que passam por ela o",
+    "nucleo converte no mesmo perfil de aparelho do botao dele (browserViewEmulator.ts, _intercept).",
+    "O editor libera API proposta para extensao EMBUTIDA que a declara (extensionsProposedApi.ts):",
+    "esta extensao viaja dentro do programa, entao nao precisa de nucleo novo.",
+    "Custo desta escolha: API proposta muda sem aviso entre versoes do editor; a cada subida de tag o",
+    "teste de tela da V17 (tela_navegador.mjs) e quem diz se ela ainda existe com a mesma forma."
+  ],
+  "enabledApiProposals": [
+    "browser"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "__porqueOSdkEDependencia": [
+    "A V2 embute o agente: o painel fala com o Agent SDK dentro do host de extensao.",
+    "O pacote em si sao 4,9 MB, mas ele puxa @anthropic-ai/claude-agent-sdk-win32-x64,",
+    "que traz o claude.exe — 250 MB somando tudo, medido em 10/09/2026.",
+    "",
+    "Custo desta escolha: embutir engorda o instalador (a",
+    "extensao oficial faz o mesmo, com 208 MB por plataforma) e obriga a atualizar o",
+    "binario a cada versao. NAO embutir deixaria o instalador leve e criaria um",
+    "pre-requisito de instalacao para quem so quer abrir o programa e trabalhar — que",
+    "e justamente o que este projeto existe para evitar. Escolhido embutir; o numero",
+    "do instalador final entra na lista de decisoes para conferir na V7.",
+    "",
+    "node_modules NAO viaja no repositorio (.gitignore) — so o package-lock. Quem",
+    "constroi instala: scripts/copiar_extensoes.mjs roda `npm ci` (o lock e quem manda)",
+    "copiada quando ela declara dependencia."
+  ],
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.261"
+  },
+  "__porqueODiffMoraAqui": [
+    "O diff EM LINHA com CodeLens (V3) mora aqui, e nao no product.json como os outros padroes de",
+    "interface: a razao que levou os outros para la (o padrao de extensao nao chega a PRIMEIRA pintura)",
+    "nao vale para o diff, que so existe quando uma proposta abre - muito depois da pintura.",
+    "Medido em 11/09/2026 (V3, M3): sem `diffEditor.codeLens` o editor de diff nao chama o provedor de",
+    "CodeLens nenhuma vez, e os botoes por trecho nao aparecem.",
+    "Custo desta escolha: os dois valem para TODO diff do editor - o do git tambem passa a abrir em linha e",
+    "a mostrar CodeLens. A pessoa troca na configuracao, como qualquer padrao."
+  ],
+  "__porqueABarraDeTituloMudou": [
+    "V20, duas ordens dele na leva de 21/09/2026 (21/09/2026):",
+    "",
+    "t188 - 'nao entendi esses itens aqui nao quero eles': os tres botoes (Arquivos, Conversa,",
+    "Layout) sairam da barra de cima. Perguntado se o mostrador do limite saia junto, escolheu",
+    "'tira os 3 e o limite tambem'. Os comandos continuam na paleta e nos atalhos: saiu a PORTA",
+    "na barra, nao a funcao.",
+    "",
+    "O limite nao sumiu do produto - MUDOU DE LUGAR. Virou a faixa de medidores da V20 (t199,",
+    "patch 0017), com barra que enche, que e onde ele pediu que ficasse.",
+    "",
+    "t196 - no lugar deles entra o mostrador de TOKENS: 'tokens tem que ficar assim. entre a",
+    "barra de pesquisa e os botoes de minimizar, maximizar e fechar janela'."
+  ],
+  "contributes": {
+    "configurationDefaults": {
+      "diffEditor.renderSideBySide": false,
+      "diffEditor.codeLens": true
+    },
+    "configuration": {
+      "title": "OFICINA",
+      "properties": {
+        "oficina.permitirPularAprovacao": {
+          "type": "boolean",
+          "default": false,
+          "scope": "machine",
+          "markdownDescription": "Mostra no seletor da conversa o modo **faz tudo sem perguntar**, em que o agente edita arquivos e roda comandos sem pedir licença. Desligado por padrão. Vale a partir da próxima conversa. As regras de permissão da pasta aberta continuam valendo."
+        },
+        "oficina.botoesNasFuncoes": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mostrar \"Explicar\" e \"Gerar teste\" acima de cada funcao (CodeLens)."
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "oficina.conversas",
+        "key": "ctrl+shift+h",
+        "mac": "cmd+shift+h",
+        "when": "!terminalFocus"
+      },
+      {
+        "command": "oficina.abrirConversaOuExplicar",
+        "key": "ctrl+t",
+        "mac": "cmd+t"
+      },
+      {
+        "command": "claude-vscode.reopenClosedSession",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "config.claudeCode.enableReopenClosedSessionShortcut && claude-vscode.lastClosedWasSession"
+      },
+      {
+        "command": "oficina.explicar",
+        "key": "ctrl+alt+e",
+        "mac": "cmd+alt+e",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "oficina.corrigir",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "oficina.testar",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "oficina.perguntar",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorHasSelection"
+      }
+    ],
+    "commands": [
+      {
+        "command": "oficina.abrirArquivos",
+        "title": "Arquivos",
+        "icon": "$(files)"
+      },
+      {
+        "command": "oficina.abrirConversa",
+        "title": "Conversa",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "oficina.boasVindas",
+        "title": "Boas-vindas da OFICINA",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.socorro",
+        "title": "Socorro (quando a conversa não responde)",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.ajustes.desfazer",
+        "title": "Desfazer os ajustes na tela da conversa",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.abrirConversaOuExplicar",
+        "title": "Abrir a conversa",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.abrirPainel",
+        "title": "Conversa",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.pararAgente",
+        "title": "Parar o que o agente está fazendo",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.abrirConversaOficial",
+        "title": "Abrir a conversa da extensão oficial (caminho de volta)",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.novaConversa",
+        "title": "Nova conversa",
+        "category": "OFICINA",
+        "icon": "$(add)"
+      },
+      {
+        "command": "oficina.novaConversaEquipe",
+        "title": "Nova conversa",
+        "category": "OFICINA",
+        "icon": {
+          "light": "painel/marca-equipe.svg",
+          "dark": "painel/marca-equipe.svg"
+        }
+      },
+      {
+        "command": "oficina.mostrarTerminal",
+        "title": "Mostrar o terminal dos comandos do agente",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.aceitarTudo",
+        "title": "Aceitar tudo",
+        "category": "OFICINA",
+        "icon": "$(check-all)"
+      },
+      {
+        "command": "oficina.rejeitarTudo",
+        "title": "Rejeitar tudo",
+        "category": "OFICINA",
+        "icon": "$(close-all)"
+      },
+      {
+        "command": "oficina.aceitarTrecho",
+        "title": "Aceitar trecho",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.rejeitarTrecho",
+        "title": "Rejeitar trecho",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.conversas",
+        "title": "Conversas desta pasta",
+        "category": "OFICINA",
+        "icon": "$(history)"
+      },
+      {
+        "command": "oficina.explicar",
+        "title": "Explicar",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.corrigir",
+        "title": "Corrigir",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.testar",
+        "title": "Gerar teste",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.perguntar",
+        "title": "Perguntar sobre a seleção",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.tokens.abrir",
+        "title": "Tokens da conversa",
+        "category": "OFICINA",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "oficina.layout",
+        "title": "Layout da tela",
+        "category": "OFICINA",
+        "icon": "$(layout)"
+      },
+      {
+        "command": "oficina.limite",
+        "title": "Limite do plano",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.limite.detalhe",
+        "title": "Detalhe do consumo do plano",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.tokensNaBarra",
+        "title": "Tokens da conversa (na barra de cima)",
+        "category": "OFICINA",
+        "shortTitle": "${oficina.tokens}"
+      },
+      {
+        "command": "oficina.skills.abrir",
+        "title": "Skills",
+        "category": "OFICINA",
+        "icon": "$(book)"
+      },
+      {
+        "command": "oficina.skills.usar",
+        "title": "Usar a skill",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.skills.favoritar",
+        "title": "Favoritar",
+        "category": "OFICINA",
+        "icon": "$(star-empty)"
+      },
+      {
+        "command": "oficina.skills.desfavoritar",
+        "title": "Tirar das favoritas",
+        "category": "OFICINA",
+        "icon": "$(star-full)"
+      },
+      {
+        "command": "oficina.skills.ocultar",
+        "title": "Ocultar",
+        "category": "OFICINA",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "oficina.skills.mostrar",
+        "title": "Mostrar de novo",
+        "category": "OFICINA",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "oficina.skills.recomecar",
+        "title": "Recomeçar a arrumação das skills",
+        "category": "OFICINA",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "oficina.conectarGithub",
+        "title": "Conectar ao GitHub",
+        "category": "OFICINA",
+        "icon": "$(github)"
+      },
+      {
+        "command": "oficina.navegador.abrir",
+        "title": "Navegador",
+        "category": "OFICINA",
+        "icon": "$(device-mobile)"
+      },
+      {
+        "command": "oficina.navegador.abrirEndereco",
+        "title": "Abrir endereço no navegador",
+        "category": "OFICINA",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "oficina.navegador.abrirHtml",
+        "title": "Abrir o HTML do editor no navegador",
+        "category": "OFICINA",
+        "icon": "$(file-code)"
+      },
+      {
+        "command": "oficina.navegador.emular",
+        "title": "Imitar um aparelho no navegador",
+        "category": "OFICINA"
+      },
+      {
+        "command": "oficina.navegador.girar",
+        "title": "Girar o aparelho do navegador (retrato/paisagem)",
+        "category": "OFICINA",
+        "icon": "$(sync)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "oficina.novaConversa",
+          "when": "activeWebviewPanelId == 'oficina.conversa' && !oficina.marcaDaEquipe",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.novaConversaEquipe",
+          "when": "activeWebviewPanelId == 'oficina.conversa' && oficina.marcaDaEquipe",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.aceitarTudo",
+          "when": "resourceScheme == oficina-proposta",
+          "group": "navigation@1"
+        },
+        {
+          "command": "oficina.rejeitarTudo",
+          "when": "resourceScheme == oficina-proposta",
+          "group": "navigation@2"
+        }
+      ],
+      "titleBar": [
+        {
+          "command": "oficina.tokensNaBarra",
+          "when": "titleBarLiveLabel && oficina.tokens.aMostrar",
+          "group": "navigation@1"
+        }
+      ],
+      "help": [
+        {
+          "command": "oficina.boasVindas",
+          "group": "1_welcome"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "oficina.novaConversaEquipe",
+          "when": "false"
+        },
+        {
+          "command": "oficina.tokensNaBarra",
+          "when": "false"
+        },
+        {
+          "command": "oficina.aceitarTrecho",
+          "when": "false"
+        },
+        {
+          "command": "oficina.rejeitarTrecho",
+          "when": "false"
+        },
+        {
+          "command": "oficina.aceitarTudo",
+          "when": "false"
+        },
+        {
+          "command": "oficina.rejeitarTudo",
+          "when": "false"
+        },
+        {
+          "command": "oficina.skills.usar",
+          "when": "false"
+        },
+        {
+          "command": "oficina.skills.favoritar",
+          "when": "false"
+        },
+        {
+          "command": "oficina.skills.desfavoritar",
+          "when": "false"
+        },
+        {
+          "command": "oficina.skills.ocultar",
+          "when": "false"
+        },
+        {
+          "command": "oficina.skills.mostrar",
+          "when": "false"
+        },
+        {
+          "command": "oficina.navegador.emular",
+          "when": "false"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "oficina.conectarGithub",
+          "group": "navigation@9"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "oficina.skills.recomecar",
+          "when": "view == oficina.skills",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.navegador.abrirEndereco",
+          "when": "view == oficina.navegador",
+          "group": "navigation@1"
+        },
+        {
+          "command": "oficina.navegador.girar",
+          "when": "view == oficina.navegador",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "oficina.skills.favoritar",
+          "when": "view == oficina.skills && viewItem =~ /\\bnaoFavorita\\b/",
+          "group": "inline@1"
+        },
+        {
+          "command": "oficina.skills.desfavoritar",
+          "when": "view == oficina.skills && viewItem =~ /(^| )favorita\\b/",
+          "group": "inline@1"
+        },
+        {
+          "command": "oficina.skills.ocultar",
+          "when": "view == oficina.skills && viewItem =~ /\\bvisivel\\b/",
+          "group": "inline@2"
+        },
+        {
+          "command": "oficina.skills.mostrar",
+          "when": "view == oficina.skills && viewItem =~ /\\boculta\\b/",
+          "group": "inline@2"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "oficina.explicar",
+          "when": "editorHasSelection",
+          "group": "oficina@1"
+        },
+        {
+          "command": "oficina.corrigir",
+          "when": "editorHasSelection",
+          "group": "oficina@2"
+        },
+        {
+          "command": "oficina.testar",
+          "when": "editorHasSelection",
+          "group": "oficina@3"
+        },
+        {
+          "command": "oficina.perguntar",
+          "when": "editorHasSelection",
+          "group": "oficina@4"
+        }
+      ]
+    },
+    "walkthroughs": [
+      {
+        "id": "oficina.primeiros-passos",
+        "title": "A OFICINA",
+        "description": "Cinco coisas, e você já sabe usar o programa inteiro.",
+        "steps": [
+          {
+            "id": "conversa",
+            "title": "A conversa é o começo",
+            "description": "A OFICINA abre direto na conversa. É dela que o trabalho sai: peça em português o que você quer, e o resto acontece nos arquivos.\n\n⚠️ **O agente age sem pedir aprovação, de fábrica** — ele edita arquivo e roda comando sem parar a cada passo. Numa pasta que você só abriu para olhar, isso merece atenção. O seletor de modo, no pé da conversa, troca isso para a conversa seguinte.\n\n[Abrir a conversa](command:oficina.abrirConversaOuExplicar)",
+            "media": {
+              "markdown": "boas-vindas/conversa.md",
+              "altText": "A conversa ocupando o editor"
+            },
+            "completionEvents": [
+              "onCommand:oficina.abrirConversaOuExplicar"
+            ]
+          },
+          {
+            "id": "arquivos",
+            "title": "A barra de ícones, em cima: arquivos, Git e skills",
+            "description": "A barra de ícones fica **no topo**, na horizontal, entre a marca e a barra de pesquisa. Ela tem quatro botões: **Arquivos** (as cores dizem o que o Git vê: modificado, novo, ignorado), **Git** (mudanças, commit, empurrar e puxar), **Tokens** (o detalhe do gasto da conversa) e **Skills**. Um clique abre, outro clique no mesmo botão fecha. O navegador, que abre uma página e imita a tela de um celular, tablet ou monitor, fica na paleta de comandos (Ctrl+Shift+P, **Navegador**).\n\n[Abrir os arquivos](command:workbench.view.explorer)\n[Abrir o Git](command:workbench.view.scm)\n[Conectar ao GitHub](command:oficina.conectarGithub)",
+            "media": {
+              "markdown": "boas-vindas/arquivos.md",
+              "altText": "Os quatro botões da barra de cima"
+            },
+            "completionEvents": [
+              "onCommand:workbench.view.explorer"
+            ]
+          },
+          {
+            "id": "comandos",
+            "title": "Tudo por uma linha só",
+            "description": "Ctrl+Shift+P abre a lista de tudo que o programa sabe fazer. Não precisa decorar menu: digite o que você quer.\n\n[Abrir a lista de comandos](command:workbench.action.showCommands)",
+            "media": {
+              "markdown": "boas-vindas/comandos.md",
+              "altText": "A lista de comandos"
+            },
+            "completionEvents": [
+              "onCommand:workbench.action.showCommands"
+            ]
+          },
+          {
+            "id": "tema",
+            "title": "Claro ou escuro, como você trabalha",
+            "description": "A OFICINA vem em dois temas próprios: **OFICINA Escuro** (carvão quente) e **OFICINA Claro** (papel quente). A mesma cor de destaque nos dois.\n\n[Trocar o tema](command:workbench.action.selectTheme)",
+            "media": {
+              "markdown": "boas-vindas/tema.md",
+              "altText": "Os dois temas"
+            },
+            "completionEvents": [
+              "onCommand:workbench.action.selectTheme"
+            ]
+          },
+          {
+            "id": "medidas",
+            "title": "Quanto a conversa gastou, quanto falta do plano, e as suas skills",
+            "description": "Os números da conversa ficam na **barra de cima**, à direita da pesquisa: contexto agora, total processado, custo estimado e o **relógio do cache** (os minutos até a conversa esfriar; vencido, a próxima mensagem relê tudo e custa mais). Um clique abre o detalhe: modelos, subagentes e as skills que a conversa carregou.\n\nLogo abaixo, a **faixa do limite do plano**: `5h` e `7d`, cada um com a barra preenchida e a porcentagem. O botão à esquerda dela abre o detalhe do consumo.\n\nAs skills ficam no botão **Skills** da barra de ícones: um clique entrega a skill à conversa, e a estrela e o olho arrumam a lista do seu jeito.\n\n[Ver os tokens](command:oficina.tokens.abrir)\n[Ver o consumo do plano](command:oficina.limite.detalhe)\n[Ver as skills](command:oficina.skills.abrir)",
+            "media": {
+              "markdown": "boas-vindas/medidas.md",
+              "altText": "As vistas de tokens e de skills"
+            },
+            "completionEvents": [
+              "onCommand:oficina.tokens.abrir",
+              "onCommand:oficina.skills.abrir"
+            ]
+          }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "oficinaTokens",
+          "title": "Tokens",
+          "icon": "painel/tokens.svg"
+        },
+        {
+          "id": "oficinaSkills",
+          "title": "Skills",
+          "icon": "painel/skills.svg"
+        },
+        {
+          "id": "oficinaNavegador",
+          "title": "Navegador",
+          "icon": "painel/navegador.svg"
+        }
+      ]
+    },
+    "views": {
+      "oficinaTokens": [
+        {
+          "id": "oficina.tokens",
+          "name": "Tokens"
+        }
+      ],
+      "oficinaSkills": [
+        {
+          "id": "oficina.skills",
+          "name": "Skills"
+        }
+      ],
+      "oficinaNavegador": [
+        {
+          "id": "oficina.navegador",
+          "name": "Navegador"
+        }
+      ]
+    }
+  }
+}

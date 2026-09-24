@@ -1,0 +1,12 @@
+Linha de base do conteudo do historico — os blobs que a varredura ja acusava quando ela
+passou a rodar em toda regressao. Estes nao saem sem reescrever o historico, que e uma
+operacao destrutiva. Nao e isencao: eles continuam acusados, num criterio proprio. Blob
+que NAO estiver aqui e vazamento novo, e reprova.
+
+Formato: so as linhas com exatamente 8 caracteres hexadecimais contam. Estas linhas de
+explicacao sao ignoradas por nao terem esse formato.
+
+ESTA LISTA ESTA VAZIA, e isso e o estado correto deste repositorio: a historia comeca no
+commit raiz, feito de uma arvore conferida, e a varredura do historico inteiro mede
+0 achados. Nao havendo nada herdado, nao ha o que isentar — e qualquer achado futuro e,
+por definicao, novo.

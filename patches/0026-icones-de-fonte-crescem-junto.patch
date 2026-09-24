@@ -1,0 +1,29 @@
+diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+index dbac88d9d84..f0180de32f3 100644
+--- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -618,3 +618,24 @@
+ 	background-repeat: no-repeat;
+ 	background-position: center center;
+ }
++
++/* ─── OFICINA patch 0026 — E OS ICONES DE FONTE CRESCEM JUNTO ────────────────────────────────
++   A regra acima termina em `:not(.codicon)`, e a exclusao e correta: um icone de IMAGEM precisa
++   de `width`/`height` senao colapsa no padding, e um codicon nao — ele se dimensiona pela FONTE.
++
++   So que "nao precisa de width" nao e "nao precisa crescer". Subindo so a regra de cima, os dois
++   icones que vem de extensao (Tokens, Skills) foram para 20px e os dois do nucleo (Arquivos, Git)
++   ficaram nos 16px da fonte padrao. Medido na tela do build: 26x26 contra 22x22, lado a lado, na
++   mesma barra — mais desigual do que era antes, quando os quatro tinham o mesmo tamanho errado.
++
++   `font-size` e o que dá tamanho ao glifo; `width`/`height` mantem a caixa quadrada para os
++   quatro ficarem alinhados e com o mesmo espaco de clique.
++   ───────────────────────────────────────────────────────────────────────────────────────── */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .monaco-action-bar .action-item.icon .action-label.codicon {
++	font-size: 20px;
++	width: 20px;
++	height: 20px;
++	display: flex;
++	align-items: center;
++	justify-content: center;
++}

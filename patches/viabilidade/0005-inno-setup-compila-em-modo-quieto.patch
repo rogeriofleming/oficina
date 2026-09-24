@@ -1,0 +1,15 @@
+diff --git a/build/gulpfile.vscode.win32.ts b/build/gulpfile.vscode.win32.ts
+index 1f0f2d9ea0a..719dd39da0e 100644
+--- a/build/gulpfile.vscode.win32.ts
++++ b/build/gulpfile.vscode.win32.ts
+@@ -42,6 +42,10 @@ function packageInnoSetup(iss: string, options: { definitions?: Record<string, u
+ 
+ 	const defs = keys.map(key => `/d${key}=${definitions[key]}`);
+ 	const args = [
++		'/Qp', // OFICINA (patch de viabilidade): sem isto o ISCC.exe abre uma janela de
++		       // progresso na tela de quem esta usando a maquina durante os minutos que o
++		       // empacotamento leva. /Qp mantem o progresso no stdout (o log continua util)
++		       // sem abrir GUI nenhuma.
+ 		iss,
+ 		...defs,
+ 		`/sesrp=node ${signWin32Path} $f`

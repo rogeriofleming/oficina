@@ -1,0 +1,46 @@
+diff --git a/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedService.ts b/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedService.ts
+index ac89ae8e931..6f2ea667795 100644
+--- a/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedService.ts
++++ b/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStartedService.ts
+@@ -28,6 +28,7 @@ import { InstantiationType, registerSingleton } from '../../../../platform/insta
+ import { dirname } from '../../../../base/common/path.js';
+ import { coalesce } from '../../../../base/common/arrays.js';
+ import { IViewsService } from '../../../services/views/common/viewsService.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { localize, localize2 } from '../../../../nls.js';
+ import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
+ import { checkGlobFileExists } from '../../../services/extensions/common/workspaceContains.js';
+@@ -161,7 +162,8 @@ export class WalkthroughsService extends Disposable implements IWalkthroughsServ
+ 		@ITelemetryService private readonly telemetryService: ITelemetryService,
+ 		@IWorkbenchAssignmentService private readonly tasExperimentService: IWorkbenchAssignmentService,
+ 		@IWorkbenchLayoutService private readonly layoutService: IWorkbenchLayoutService,
+-		@IEditorService private readonly editorService: IEditorService
++		@IEditorService private readonly editorService: IEditorService,
++		@IProductService private readonly productService: IProductService
+ 	) {
+ 		super();
+ 
+@@ -181,12 +183,21 @@ export class WalkthroughsService extends Disposable implements IWalkthroughsServ
+ 
+ 	private registerWalkthroughs() {
+ 
+-		walkthroughs.forEach(async (category, index) => {
++		// A product that brings its own welcome can drop the ones from this source.
++		// They name the upstream product on screen and there is no setting for it.
++		//
++		// Only the built-in list is skipped. This method also installs the handler for
++		// the `walkthroughs` extension point further down, and returning early here
++		// would take every extension-contributed walkthrough with it -- including the
++		// product's own.
++		const embutidos = this.productService.hideBuiltinWalkthroughs ? [] : walkthroughs;
++
++		embutidos.forEach(async (category, index) => {
+ 
+ 			this._registerWalkthrough({
+ 				...category,
+ 				icon: { type: 'icon', icon: category.icon },
+-				order: walkthroughs.length - index,
++				order: embutidos.length - index,
+ 				source: BUILT_IN_SOURCE,
+ 				when: ContextKeyExpr.deserialize(category.when) ?? ContextKeyExpr.true(),
+ 				steps:

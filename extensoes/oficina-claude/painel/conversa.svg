@@ -1,0 +1,7 @@
+<!-- O ícone da aba da conversa.
+     Monocromático de propósito: o VS Code pinta o ícone de aba com a cor do tema
+     (ativo/inativo), e um ícone colorido brigaria com isso em vez de acompanhar. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
+  <path d="M2.5 2h11a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 13.5 12H6.6l-3 2.4A.5.5 0 0 1 2.8 14v-2H2.5A1.5 1.5 0 0 1 1 10.5v-7A1.5 1.5 0 0 1 2.5 2Zm0 1a.5.5 0 0 0-.5.5v7a.5.5 0 0 0 .5.5h1.3v1.46L5.9 11h7.6a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.5-.5h-11Z"/>
+  <path d="M4.5 5.5h7v1h-7v-1Zm0 2.5h4.5v1H4.5V8Z"/>
+</svg>

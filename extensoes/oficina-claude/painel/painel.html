@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<!--
+  ⚠️ A CSP é montada em extensao.js e injetada aqui, com nonce por abertura.
+  Sem `unsafe-inline`, sem `unsafe-eval` e sem origem remota: nada de fora entra
+  nesta janela. Anexo B item 4 do plano, e item 5 do checklist da P1.
+
+  O `img-src` aceita `data:` porque os ícones são SVG embutido — nenhum arquivo de
+  imagem viaja, e nenhuma URL externa é buscada.
+-->
+<meta http-equiv="Content-Security-Policy" content="__CSP__">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="__CSS__" rel="stylesheet">
+<title>Conversa</title>
+</head>
+<body>
+
+<!--
+  ⚠️ NÃO HÁ CABEÇALHO AQUI DENTRO, e é pedido dele, não economia de espaço.
+
+  Em 05/09/2026, com a OFICINA aberta: "o nome da conversa fica no lugar do nome onde ta
+  'Claude code' sem uma segunda barra pra algo que pode estar em uma barra só, e a ÚNICA
+  coisa nessa barra além da guia da conversa, é o ícone do claude pra gerar nova conversa".
+
+  A barra é a da ABA do editor: o nome da conversa é o título da aba (extensao.js) e o
+  botão de nova conversa é uma ação dela (package.json, menus editor/title). O que morava
+  num cabeçalho — conta, modelo, modo, custo, Sair — desceu para a linha do pé, junto da
+  caixa de escrever, que é onde a extensão oficial já põe modelo e modo.
+-->
+
+<main id="conversa" class="conversa" aria-live="polite">
+  <div class="vazio" id="vazio">
+    <p class="vazio-titulo">Peça em português o que você quer.</p>
+    <p class="vazio-linha">Ele lê e escreve os arquivos desta pasta — e pergunta antes de mexer em qualquer um.</p>
+  </div>
+</main>
+
+<!--
+  V16 — O MAPA DOS AGENTES, aberto pelo botão "N agentes" do pé, por cima da conversa. A forma é a de um mapa
+  de agentes ("Agent map"): o cartão da sessão à esquerda, linhas em árvore até uma coluna de cartões, um por
+  agente (ponto de estado, nome, tempo e tokens); o clique abre o detalhe, com os de segundo nível dentro. As cores
+  são as da OFICINA. Os cartões são desenhados pelo script; aqui só o esqueleto. Fecha com ✕ e com Esc.
+-->
+<div id="mapa" class="mapa" role="dialog" aria-modal="true" aria-labelledby="mapa-titulo" aria-describedby="mapa-sub" hidden>
+  <div class="mapa-cabeca">
+    <div class="mapa-cabeca-textos">
+      <h2 id="mapa-titulo" class="mapa-titulo">Mapa dos agentes</h2>
+      <p id="mapa-sub" class="mapa-sub"></p>
+    </div>
+    <button id="mapa-fechar" class="mapa-fechar" type="button" aria-label="Fechar o mapa (Esc)" title="Fechar (Esc)">
+      <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4 12 12M12 4 4 12"/></svg>
+    </button>
+  </div>
+  <div class="mapa-corpo">
+    <div id="mapa-sessao" class="mapa-sessao">
+      <span id="mapa-sessao-ponto" class="mapa-sessao-ponto" aria-hidden="true"></span>
+      <span class="mapa-sessao-textos">
+        <span id="mapa-sessao-titulo" class="mapa-sessao-titulo"></span>
+        <span id="mapa-sessao-linha" class="mapa-sessao-linha"></span>
+      </span>
+    </div>
+    <ul id="mapa-ramos" class="mapa-ramos"></ul>
+  </div>
+</div>
+
+<footer class="pe">
+  <!--
+    V4 — O HISTÓRICO DOS COMANDOS DA SESSÃO.
+
+    Fechado por padrão e invisível enquanto não houver comando nenhum: numa conversa que só mexe em
+    arquivo, ele não existe. Aberto, é a resposta a "o que esse agente já rodou na minha máquina
+    hoje?" — uma pergunta que a conversa responde mal, porque para respondê-la é preciso rolar tudo.
+  -->
+  <div class="historico" id="historico" hidden>
+    <button class="historico-botao" id="historico-botao" type="button" aria-expanded="false" aria-controls="historico-lista">
+      <span class="historico-seta" aria-hidden="true">▸</span>
+      <span id="historico-conta"></span>
+    </button>
+    <ol class="historico-lista" id="historico-lista" hidden></ol>
+  </div>
+  <!--
+    V15 — O PAINEL DE ESCOLHA do modelo e do esforço, aberto pelo botão do modelo, por cima da conversa.
+    A lista é a que o agente dá (nome em destaque, descrição menor embaixo; o em uso realçado e com ✓);
+    abaixo, o esforço num controle de cinco pontos, só com os que o modelo aceita. Teclado: setas andam,
+    Enter escolhe, Esc fecha. Os itens são desenhados pelo script; aqui só o esqueleto.
+  -->
+  <div id="seletor" class="seletor" role="dialog" aria-label="Modelo e esforço" hidden>
+    <div class="seletor-titulo" id="seletor-titulo-modelo">Modelo</div>
+    <ul id="seletor-lista" class="seletor-lista" role="listbox" tabindex="0" aria-labelledby="seletor-titulo-modelo"></ul>
+    <div id="seletor-confirmar" class="seletor-confirmar" hidden>
+      <p id="seletor-confirmar-texto" class="seletor-confirmar-texto"></p>
+      <div class="seletor-confirmar-botoes">
+        <!-- O primário é o que não custa (e é onde o foco já cai): a brasa leva o olho ao botão seguro. -->
+        <button id="seletor-trocar" class="seletor-botao secundario" type="button">Trocar mesmo assim</button>
+        <button id="seletor-manter" class="seletor-botao" type="button">Manter o modelo</button>
+      </div>
+    </div>
+    <p id="seletor-nota" class="seletor-nota" hidden></p>
+    <div id="esforco" class="esforco">
+      <div class="seletor-titulo" id="esforco-titulo">Esforço</div>
+      <div id="esforco-controle" class="esforco-controle" role="slider" tabindex="0" aria-labelledby="esforco-titulo"></div>
+      <p id="esforco-sem" class="esforco-sem" hidden></p>
+      <p id="esforco-aviso" class="esforco-aviso" hidden>Com o cache quente, trocar o esforço pode fazer a próxima mensagem reescrever parte do cache.</p>
+    </div>
+  </div>
+  <div class="caixa">
+    <!--
+      V18 — A ALÇA DA CAIXA DE ESCREVER: arrastar a borda de cima muda a altura dela (para cima, maior). Setas
+      para cima/baixo fazem o mesmo pelo teclado (Shift, de quatro em quatro passos); Home e End vão ao menor e
+      ao maior; duplo clique ou Delete voltam ao automático (cresce com o texto). O tamanho é guardado sozinho
+      pelo host e volta ao reabrir; "Voltar ao layout padrão", no botão Layout, devolve o automático.
+    -->
+    <div id="alca-caixa" class="alca-caixa" role="separator" aria-orientation="horizontal" tabindex="0"
+      aria-label="Altura da caixa de escrever" aria-controls="entrada"
+      title="Arraste para mudar a altura da caixa · duplo clique volta ao automático"></div>
+    <textarea id="entrada" rows="1" placeholder="Escreva aqui — Enter envia, Shift+Enter quebra linha"
+      aria-label="Sua mensagem"></textarea>
+    <!--
+      Ícone, não palavra — pedido dele ("ícone em vez de palavra"), cobrado pela revisão de
+      beleza em 10/09/2026. O nome continua no aria-label e na dica: quem não enxerga o
+      desenho não perde o botão. SVG escrito aqui, no HTML nosso — nada vem de fora.
+    -->
+    <div class="acoes">
+      <button id="parar" class="botao parar icone" type="button" hidden aria-label="Parar" title="Parar">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5"/></svg>
+      </button>
+      <button id="enviar" class="botao icone" type="button" aria-label="Enviar" title="Enviar (Enter)">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 13 7.5H9.75V13.5H6.25V7.5H3Z"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="linha-de-estado miudo">
+    <span class="ponto" id="ponto" data-estado="abrindo" aria-hidden="true"></span>
+    <!--
+      V15 — UM BOTÃO SÓ para modelo e esforço ("Opus 5 (1M) · alto"), como nas duas referências que ele
+      mandou. O texto vem pronto do host, e é sempre o que está EM USO; escondido até o host dizer qual é.
+    -->
+    <button id="modelo" class="modelo" type="button" hidden aria-haspopup="dialog" aria-expanded="false" aria-controls="seletor"></button>
+    <!--
+      Os modos do SDK, à vista. O rótulo diz o que ACONTECE, não o nome técnico:
+      quem usa a OFICINA precisa saber se o programa vai perguntar antes de mexer
+      nos arquivos dele — "acceptEdits" não responde isso, "edita sem perguntar" sim.
+    -->
+    <label class="modo-rotulo" for="modo">Antes de mexer:</label>
+    <select id="modo" class="modo" aria-label="O que o agente faz antes de mexer nos arquivos">
+      <option value="default">pergunta sempre</option>
+      <option value="plan">só planeja, não mexe</option>
+      <option value="acceptEdits">edita sem perguntar</option>
+      <!-- Escondido até o host dizer que a configuração está ligada (evento `opcoes`). -->
+      <option value="bypassPermissions" hidden disabled>faz tudo sem perguntar</option>
+    </select>
+    <span class="empurra"></span>
+    <!--
+      V16 — OS AGENTES EM PARALELO: quantos rodam agora; o clique abre o mapa. Escondido enquanto a conversa não
+      teve agente nenhum (o pé já está no limite da largura, e "0 agentes" em toda conversa seria ruído). Depois do
+      primeiro, fica — com "0 agentes" quando nenhum roda, porque o mapa ainda mostra os que terminaram.
+    -->
+    <button id="agentes" class="agentes" type="button" hidden aria-haspopup="dialog" aria-expanded="false" aria-controls="mapa">
+      <svg class="agentes-icone" viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="2"/><circle cx="12.5" cy="3.5" r="2"/><circle cx="12.5" cy="12.5" r="2"/><path d="M5.5 8H8M8 3.5V12.5M8 3.5H10.5M8 12.5H10.5"/></svg>
+      <span id="agentes-n" class="agentes-n"></span><span id="agentes-rotulo" class="agentes-rotulo"></span>
+    </button>
+    <!--
+      V14 — O RELÓGIO DO CACHE: anel + minutos até o cache da conversa vencer. Quem faz a conta é o host
+      (`relogioCache.js`), uma vez por minuto; aqui só se desenha. O anel usa `pathLength="100"`: o traço
+      é a porcentagem, sem conta de circunferência nesta página.
+    -->
+    <span id="cache" class="cache" hidden>
+      <svg class="cache-anel" viewBox="0 0 16 16" aria-hidden="true">
+        <circle class="cache-trilho" cx="8" cy="8" r="6"/>
+        <circle class="cache-arco" id="cache-arco" cx="8" cy="8" r="6" pathLength="100" stroke-dasharray="100 100" transform="rotate(-90 8 8)"/>
+      </svg>
+      <span id="cache-minutos" class="cache-minutos"></span>
+    </span>
+    <!-- Os tokens: contexto agora · processado · custo estimado. Sempre à vista; o clique abre o detalhe. -->
+    <span id="custo" class="custo" role="button" tabindex="0" title="Os tokens desta conversa. Clique para ver o detalhe."></span>
+    <span id="conta" class="conta">entrando…</span>
+    <button id="sair" class="botao-texto" type="button" hidden>Sair</button>
+  </div>
+</footer>
+
+<script nonce="__NONCE__" src="__JS__"></script>
+</body>
+</html>

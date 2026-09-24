@@ -1,0 +1,24 @@
+diff --git a/src/vs/platform/update/electron-main/updateService.win32.ts b/src/vs/platform/update/electron-main/updateService.win32.ts
+index 9c930e2989e..f9f135ebb01 100644
+--- a/src/vs/platform/update/electron-main/updateService.win32.ts
++++ b/src/vs/platform/update/electron-main/updateService.win32.ts
+@@ -75,7 +75,18 @@ export class Win32UpdateService extends AbstractUpdateService implements IRelaun
+ 	private readonly setupMutexName: string;
+ 
+ 	private get cachePathSync(): string {
+-		return path.join(tmpdir(), `vscode-${this.productService.quality}-${this.productService.target}-${process.arch}`);
++		// OFICINA: a pasta de cache de update leva o NOME DO PRODUTO, e nao o literal "vscode".
++		//
++		// MEDIDO em 12/09/2026, numa maquina com o VS Code oficial instalado: com o prefixo fixo,
++		// este produto (quality "stable", target "user") usa EXATAMENTE a mesma pasta que o VS
++		// Code (`%TEMP%\vscode-stable-user-x64`). O `cleanup()` daqui tentou APAGAR o pacote de
++		// atualizacao pendente do VS Code - so nao apagou porque um setup travado do proprio VS
++		// Code segurava o arquivo (EBUSY). E a pasta divide nomes fixos entre os dois produtos:
++		// `update-metadata.json` (o ultimo a escrever ganha), `cancel.flag` (um cancelaria o update
++		// do outro), `update-progress`, `session-ending.flag`, e todo `*.tmp` (um apagaria o
++		// download em andamento do outro). Com o nome do produto, cada um tem a sua.
++		// Ver patches/0009-cache-de-update-com-o-nome-do-produto.md.
++		return path.join(tmpdir(), `${this.productService.applicationName}-${this.productService.quality}-${this.productService.target}-${process.arch}`);
+ 	}
+ 
+ 	@memoize

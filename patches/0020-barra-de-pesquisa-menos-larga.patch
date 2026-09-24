@@ -1,0 +1,26 @@
+diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+index 16d2fa44996..8032ac33876 100644
+--- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -175,8 +175,9 @@
+ 	margin: 0 6px;
+ 	border-radius: var(--vscode-cornerRadius-medium);
+ 	height: 22px;
+-	width: 38vw;
+-	max-width: 600px;
++	/* OFICINA: a barra de pesquisa cede largura (pedido do dono do produto). Era 38vw / 600px. */
++	width: 30vw;
++	max-width: 420px;
+ }
+ 
+ .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title > .command-center .action-item.command-center-center .action-item.command-center-quick-pick {
+@@ -184,7 +185,8 @@
+ 	justify-content: start;
+ 	overflow: hidden;
+ 	margin: auto;
+-	max-width: 600px;
++	/* OFICINA: acompanha a largura acima. Era 600px. */
++	max-width: 420px;
+ }
+ 
+ .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-center > .window-title > .command-center .action-item.command-center-center .action-item.command-center-quick-pick .search-icon {

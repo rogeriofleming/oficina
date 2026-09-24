@@ -1,0 +1,137 @@
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 9d2e8a8..030f519 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -24,8 +24,8 @@ import { IInstantiationService, ServicesAccessor } from '../../../../platform/in
+ import { Emitter, Event } from '../../../../base/common/event.js';
+ import { IStorageService, StorageScope } from '../../../../platform/storage/common/storage.js';
+ import { Parts, IWorkbenchLayoutService, ActivityBarPosition, LayoutSettings, EditorActionsLocation, EditorTabsMode } from '../../../services/layout/browser/layoutService.js';
+-import { createActionViewItem, fillInActionBarActions } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
+-import { Action2, IMenu, IMenuService, MenuId, registerAction2 } from '../../../../platform/actions/common/actions.js';
++import { createActionViewItem, fillInActionBarActions, MenuEntryActionViewItem } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
++import { Action2, IMenu, IMenuService, MenuId, MenuItemAction, registerAction2 } from '../../../../platform/actions/common/actions.js';
+ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+ import { WindowTitle } from './windowTitle.js';
+@@ -224,6 +224,97 @@ export class BrowserTitleService extends MultiWindowParts<BrowserTitlebarPart> i
+ 	//#endregion
+ }
+ 
++//#region OFICINA: rotulo VIVO na barra de titulo
++//
++// Um item que a extensao embutida contribui para `MenuId.TitleBar` tem titulo ESTATICO: ele vem
++// do `package.json` e nao muda enquanto o programa roda. Isso basta para um botao, e nao basta
++// para um mostrador -- que e o que o dono do produto pediu para a barra de cima.
++//
++// Nao ha porta de extensao para isso: `ICommandAction` tem `title` e `shortTitle` como texto
++// fixo, nao ha campo de dica que o manifesto preencha, e nenhuma API proposta fala da barra de
++// titulo. O que o proprio core usa para desenhar coisa viva ali e um servico interno de itens
++// customizados, fora do alcance de qualquer extensao.
++//
++// A porta aberta aqui e GENERICA, no espirito do patch que abriu a barra de titulo a
++// contribuicao: o core continua sem saber O QUE se mostra. A regra e uma so --
++//
++//   se o titulo curto de um item da barra de titulo contiver `${chave}`, o texto desenhado sai
++//   do context key com esse nome, e se redesenha sozinho quando a chave muda.
++//
++// E, porque nao existe campo de dica que uma extensao possa preencher, o mesmo texto carrega as
++// duas informacoes: a PRIMEIRA LINHA e o que se le na barra, o resto e o que o mouse mostra.
++//
++// O `title` continua sendo o nome de gente do comando (e o que a paleta e os atalhos mostram);
++// so o `shortTitle` aceita a substituicao. Assim nada fica com `${...}` na cara de ninguem.
++//
++// ⚠️ Reconferir a cada subida de tag: se o upstream passar a expor um caminho proprio para
++// conteudo vivo na barra de titulo, este patch deve ser APAGADO, e nao carregado por inercia.
++
++/** O nome do context key que diz, a quem contribui, que este editor sabe desenhar rotulo vivo. */
++const OFICINA_ROTULO_VIVO = 'titleBarLiveLabel';
++
++const OFICINA_PADRAO_DA_CHAVE = /\$\{([^{}]+)\}/g;
++
++function oficinaTituloCru(action: MenuItemAction): string {
++	const curto = action.item.shortTitle;
++	if (!curto) {
++		return '';
++	}
++	return typeof curto === 'string' ? curto : curto.value;
++}
++
++function oficinaTemRotuloVivo(action: IAction): action is MenuItemAction {
++	if (!(action instanceof MenuItemAction) || action.item.icon) {
++		return false;
++	}
++	OFICINA_PADRAO_DA_CHAVE.lastIndex = 0;
++	return OFICINA_PADRAO_DA_CHAVE.test(oficinaTituloCru(action));
++}
++
++class OficinaLiveLabelActionViewItem extends MenuEntryActionViewItem {
++
++	private readonly aoMudarAChave = this._register(new MutableDisposable());
++
++	override render(container: HTMLElement): void {
++		super.render(container);
++
++		const chaves = new Set<string>();
++		OFICINA_PADRAO_DA_CHAVE.lastIndex = 0;
++		for (const casado of oficinaTituloCru(this._menuItemAction).matchAll(OFICINA_PADRAO_DA_CHAVE)) {
++			chaves.add(casado[1].trim());
++		}
++
++		// Redesenha SO quando alguma das chaves citadas muda: um ouvinte cego acordaria a barra
++		// de titulo a cada tecla digitada em qualquer lugar do editor.
++		this.aoMudarAChave.value = this._contextKeyService.onDidChangeContext(e => {
++			if (e.affectsSome(chaves)) {
++				this.updateLabel();
++				this.updateTooltip();
++			}
++		});
++	}
++
++	private get oficinaTextoVivo(): string {
++		return oficinaTituloCru(this._menuItemAction).replace(OFICINA_PADRAO_DA_CHAVE, (_todo, chave) => {
++			const valor = this._contextKeyService.getContextKeyValue<unknown>(String(chave).trim());
++			return valor === undefined || valor === null ? '' : String(valor);
++		});
++	}
++
++	protected override updateLabel(): void {
++		if (this.options.label && this.label) {
++			this.label.textContent = this.oficinaTextoVivo.split('\n')[0];
++		}
++	}
++
++	protected override getTooltip(): string {
++		const partes = this.oficinaTextoVivo.split('\n');
++		return partes.length > 1 ? partes.slice(1).join('\n') : super.getTooltip();
++	}
++}
++
++//#endregion
++
+ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 	//#region IView
+@@ -334,6 +425,11 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 		this.isCompactContextKey = IsCompactTitleBarContext.bindTo(this.contextKeyService);
+ 
++		// OFICINA: quem contribui para a barra de titulo pode perguntar, pelo `when`, se este
++		// editor sabe desenhar rotulo vivo. Sem isto, um item com `${chave}` no titulo curto
++		// apareceria com o `${chave}` escrito na tela num editor que nao tem este patch.
++		this.contextKeyService.createKey(OFICINA_ROTULO_VIVO, true);
++
+ 		this.titleBarStyle = getTitleBarStyle(this.configurationService);
+ 
+ 		this.windowTitle = this._register(this.instantiationService.createInstance(WindowTitle, targetWindow));
+@@ -675,6 +771,11 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 			}
+ 		}
+ 
++		// --- OFICINA: item de TEXTO VIVO (o que se le sai de um context key)
++		if (oficinaTemRotuloVivo(action)) {
++			return this.instantiationService.createInstance(OficinaLiveLabelActionViewItem, action, { ...options, hoverDelegate: this.hoverDelegate });
++		}
++
+ 		// Check extensions
+ 		return createActionViewItem(this.instantiationService, action, { ...options, menuAsChild: false });
+ 	}

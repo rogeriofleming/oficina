@@ -1,0 +1,28 @@
+diff --git a/build/gulpfile.vscode.win32.ts b/build/gulpfile.vscode.win32.ts
+index 719dd39da0e..c6f551d618c 100644
+--- a/build/gulpfile.vscode.win32.ts
++++ b/build/gulpfile.vscode.win32.ts
+@@ -117,7 +117,22 @@ function buildWin32Setup(arch: string, target: string): task.CallbackTask {
+ 			Quality: quality
+ 		};
+ 
+-		if (quality === 'stable' || quality === 'insider') {
++		// OFICINA (patch de viabilidade): o bloco abaixo so vale quando a pasta `appx` EXISTE na
++		// saida do build. Esses pacotes (o AppX do menu de contexto do Windows 11 e a DLL dele)
++		// sao assinados e montados por uma esteira fechada da Microsoft; uma build aberta nao os
++		// tem, e a linha `Source: "appx\{#AppxPackage}"` do code.iss (dentro de
++		// `#ifdef AppxPackageName`) faz o Inno Setup RECUSAR COMPILAR por arquivo ausente.
++		//
++		// Antes disto, o jeito de escapar era tirar a `quality` de "stable"/"insider" - e isso
++		// custava caro e calado: 49 arquivos do nucleo comparam `quality` com essas duas strings,
++		// e `quality !== 'stable'` liga, entre outras coisas, PREFERENCIA POR VERSAO
++		// PRE-LANCAMENTO de extensao (`abstractExtensionManagementService.ts`,
++		// `extensionGalleryService.ts`), cache de codigo expirando em 1 semana em vez de 3 meses,
++		// `VSCODE_STABLE=0` em todo terminal e um punhado de contribuicoes experimentais.
++		// Achado por uma revisao independente em 12/09/2026, depois de eu ter escrito no registro
++		// da versao que o custo era "nenhum percebido". Era falso.
++		const temPastaAppx = fs.existsSync(path.join(sourcePath, 'appx'));
++		if ((quality === 'stable' || quality === 'insider') && temPastaAppx) {
+ 			definitions['AppxPackage'] = `${quality === 'stable' ? 'code' : 'code_insider'}_${arch}.appx`;
+ 			definitions['AppxPackageDll'] = `${quality === 'stable' ? 'code' : 'code_insider'}_explorer_command_${arch}.dll`;
+ 			definitions['AppxPackageName'] = `${product.win32AppUserModelId}`;

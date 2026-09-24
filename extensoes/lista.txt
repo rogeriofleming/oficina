@@ -1,0 +1,19 @@
+# Extensoes da Open VSX que a OFICINA instala.
+# Uma por linha, no formato editor.nome. Linha com # e comentario.
+# A lista e conferida contra a Open VSX por scripts/baixar_extensoes.mjs, que
+# baixa o .vsix de cada uma para um cache local fora do repositorio.
+#
+# Por que nao a loja da Microsoft: os termos do Visual Studio Marketplace
+# limitam o uso a "Visual Studio Products and Services", e o bloqueio a forks
+# passou a ser aplicado de verdade em 2025. Um fork usa a Open VSX.
+
+anthropic.claude-code
+ms-python.python
+detachhead.basedpyright
+ms-python.debugpy
+ms-python.vscode-python-envs
+ms-vscode.powershell
+github.vscode-github-actions
+mechatroner.rainbow-csv
+tomoki1207.pdf
+cweijan.vscode-office

@@ -1,0 +1,114 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index 23b9cfaeb82..6b5ab3b4f84 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -224,6 +224,19 @@ export interface IProductConfiguration {
+ 	 */
+ 	readonly bannerGaugesContextKey?: string;
+ 
++	/**
++	 * Command ids to drop from the editor TAB BAR toolbar (the row of icons at the right of the tabs).
++	 *
++	 * A product may want the tab bar to carry only what extensions put there, without the core's own
++	 * split / lock / overflow icons. Hiding the whole toolbar is already possible with
++	 * `workbench.editor.editorActionsLocation: "hidden"`, but that also removes the extension buttons —
++	 * including ones that approve changes to files, which must not disappear by accident.
++	 *
++	 * The core does not decide WHICH ids these are: the product lists them. Secondary (overflow)
++	 * actions are filtered too, so the "…" button disappears when nothing is left behind it.
++	 */
++	readonly editorTitleActionsToHide?: string[];
++
+ 	readonly mcpGallery?: {
+ 		readonly serviceUrl: string;
+ 		readonly itemWebUrl: string;
+diff --git a/src/vs/workbench/browser/parts/editor/editorTabsControl.ts b/src/vs/workbench/browser/parts/editor/editorTabsControl.ts
+index c5487ffa306..d335030ed26 100644
+--- a/src/vs/workbench/browser/parts/editor/editorTabsControl.ts
++++ b/src/vs/workbench/browser/parts/editor/editorTabsControl.ts
+@@ -14,6 +14,7 @@ import { ResolvedKeybinding } from '../../../../base/common/keybindings.js';
+ import { DisposableStore, IDisposable } from '../../../../base/common/lifecycle.js';
+ import { createActionViewItem, getFlatActionBarActions } from '../../../../platform/actions/browser/menuEntryActionViewItem.js';
+ import { IMenuService, MenuId } from '../../../../platform/actions/common/actions.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { IContextKeyService, IContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+ import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+@@ -162,6 +163,7 @@ export abstract class EditorTabsControl extends Themable implements IEditorTabsC
+ 		@IEditorResolverService private readonly editorResolverService: IEditorResolverService,
+ 		@IHostService private readonly hostService: IHostService,
+ 		@IMenuService protected readonly menuService: IMenuService,
++		@IProductService protected readonly productService: IProductService,
+ 	) {
+ 		super(themeService);
+ 
+@@ -392,7 +394,8 @@ export abstract class EditorTabsControl extends Themable implements IEditorTabsC
+ 		this.editorActionsDisposables.add(editorActions.onDidChange(() => this.updateEditorActionsToolbar()));
+ 
+ 		const editorActionsToolbar = assertReturnsDefined(this.editorActionsToolbar);
+-		const { primary, secondary } = this.prepareEditorActions(editorActions.actions);
++		const preparadas = this.prepareEditorActions(editorActions.actions);
++		const { primary, secondary } = this.semAsEscondidasPeloProduto(preparadas);
+ 		editorActionsToolbar.setActions(prepareActions(primary), prepareActions(secondary));
+ 		this.editorActionsToolbarHasActions = primary.length > 0 || secondary.length > 0;
+ 
+@@ -413,7 +416,8 @@ export abstract class EditorTabsControl extends Themable implements IEditorTabsC
+ 		const editorActions = this.groupView.createEditorActions(this.editorLayoutActionsDisposables, MenuId.EditorTitleLayout);
+ 		this.editorLayoutActionsDisposables.add(editorActions.onDidChange(() => this.updateEditorLayoutActionsToolbar()));
+ 
+-		const { primary, secondary } = this.prepareEditorLayoutActions(editorActions.actions);
++		const preparadasDeLayout = this.prepareEditorLayoutActions(editorActions.actions);
++		const { primary, secondary } = this.semAsEscondidasPeloProduto(preparadasDeLayout);
+ 		this.editorLayoutActionsToolbar.setActions(prepareActions(primary), prepareActions(secondary));
+ 
+ 		const hasLayoutActions = primary.length > 0 || secondary.length > 0;
+@@ -425,6 +429,26 @@ export abstract class EditorTabsControl extends Themable implements IEditorTabsC
+ 		setVisibility(hasLayoutActions, this.editorLayoutActionsToolbarContainer);
+ 	}
+ 
++	/**
++	 * Drops the command ids the product asked to hide from the tab bar (OFICINA patch 0019).
++	 *
++	 * The core does not know what those ids mean: the list comes from `editorTitleActionsToHide`.
++	 * Both the visible row and the overflow are filtered, so the "…" button goes away once nothing
++	 * is left behind it — hiding the icons but keeping their menu would only move the clutter.
++	 */
++	private semAsEscondidasPeloProduto(actions: IToolbarActions): IToolbarActions {
++		const esconder = this.productService.editorTitleActionsToHide;
++		if (!esconder?.length) {
++			return actions;
++		}
++
++		const fora = new Set(esconder);
++		return {
++			primary: actions.primary.filter(a => !fora.has(a.id)),
++			secondary: actions.secondary.filter(a => !fora.has(a.id))
++		};
++	}
++
+ 	protected abstract prepareEditorActions(editorActions: IToolbarActions): IToolbarActions;
+ 
+ 	protected abstract prepareEditorLayoutActions(editorActions: IToolbarActions): IToolbarActions;
+diff --git a/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts b/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
+index 9b68bee9ebf..d395cc55e49 100644
+--- a/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
++++ b/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
+@@ -19,6 +19,7 @@ import { IInstantiationService } from '../../../../platform/instantiation/common
+ import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
+ import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
+ import { IMenuService, MenuId } from '../../../../platform/actions/common/actions.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { EditorCommandsContextActionRunner, EditorTabsControl } from './editorTabsControl.js';
+ import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+ import { IDisposable, dispose, DisposableStore, combinedDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+@@ -165,8 +166,9 @@ export class MultiEditorTabsControl extends EditorTabsControl {
+ 		@IEditorResolverService editorResolverService: IEditorResolverService,
+ 		@IHostService hostService: IHostService,
+ 		@IMenuService menuService: IMenuService,
++		@IProductService productService: IProductService,
+ 	) {
+-		super(parent, editorPartsView, groupsView, groupView, tabsModel, menuIds, breadcrumbsInHeader, contextMenuService, instantiationService, contextKeyService, keybindingService, notificationService, quickInputService, themeService, editorResolverService, hostService, menuService);
++		super(parent, editorPartsView, groupsView, groupView, tabsModel, menuIds, breadcrumbsInHeader, contextMenuService, instantiationService, contextKeyService, keybindingService, notificationService, quickInputService, themeService, editorResolverService, hostService, menuService, productService);
+ 
+ 		// Resolve the correct path library for the OS we are on
+ 		// If we are connected to remote, this accounts for the

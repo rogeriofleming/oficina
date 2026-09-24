@@ -1,0 +1,442 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index 6b5ab3b4f84..dcf56d29f74 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -237,6 +237,24 @@ export interface IProductConfiguration {
+ 	 */
+ 	readonly editorTitleActionsToHide?: string[];
+ 
++	/**
++	 * Draws the ACTIVITY BAR (the row of view-container icons) inside the window TITLE BAR,
++	 * between the app icon and the command center — instead of in the side bar header.
++	 *
++	 * `activityBar.location: "top"` already puts those icons in a horizontal row, but it puts
++	 * them in the SIDE BAR's header: they only exist while the side bar is open, and closing it
++	 * by clicking an icon leaves no icon to click again. A product whose whole navigation is
++	 * those four icons cannot have them disappear with the panel they open.
++	 *
++	 * The core does not learn any product's name here: it learns that a product may want the
++	 * bar in the title bar. Which icons, and their order, stay where they already are — the
++	 * pinned-containers state, shared with the activity bar.
++	 *
++	 * When set, the side bar stops drawing its own composite bar (there would be two), and the
++	 * vertical activity bar stays hidden regardless of `activityBar.location`.
++	 */
++	readonly activityBarInTitleBar?: boolean;
++
+ 	readonly mcpGallery?: {
+ 		readonly serviceUrl: string;
+ 		readonly itemWebUrl: string;
+diff --git a/src/vs/sessions/browser/paneCompositePartService.ts b/src/vs/sessions/browser/paneCompositePartService.ts
+index 0e3a89a3c73..f3784900065 100644
+--- a/src/vs/sessions/browser/paneCompositePartService.ts
++++ b/src/vs/sessions/browser/paneCompositePartService.ts
+@@ -69,6 +69,12 @@ export class AgenticPaneCompositePartService extends Disposable implements IPane
+ 	getRegistryId(viewContainerLocation: ViewContainerLocation): string {
+ 		return this.getPartByLocation(viewContainerLocation).registryId;
+ 	}
++	// OFICINA patch 0022: a barra de icones desenhada na barra de titulo precisa da parte da
++	// lateral como dona, para abrir a vista NELA. A interface passou a expor a parte.
++	getPaneCompositePart(viewContainerLocation: ViewContainerLocation): IPaneCompositePart {
++		return this.getPartByLocation(viewContainerLocation);
++	}
++
+ 
+ 	getPartId(viewContainerLocation: ViewContainerLocation): SINGLE_WINDOW_PARTS {
+ 		return this.getPartByLocation(viewContainerLocation).partId;
+diff --git a/src/vs/workbench/browser/parts/paneCompositePartService.ts b/src/vs/workbench/browser/parts/paneCompositePartService.ts
+index e10cad54ce5..fb08034c4dd 100644
+--- a/src/vs/workbench/browser/parts/paneCompositePartService.ts
++++ b/src/vs/workbench/browser/parts/paneCompositePartService.ts
+@@ -96,6 +96,10 @@ export class PaneCompositePartService extends Disposable implements IPaneComposi
+ 		return this.getPartByLocation(viewContainerLocation).getLastActivePaneCompositeId();
+ 	}
+ 
++	getPaneCompositePart(viewContainerLocation: ViewContainerLocation): IPaneCompositePart {
++		return this.getPartByLocation(viewContainerLocation);
++	}
++
+ 	private getPartByLocation(viewContainerLocation: ViewContainerLocation): IPaneCompositePart {
+ 		return assertReturnsDefined(this.paneCompositeParts.get(viewContainerLocation));
+ 	}
+diff --git a/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts b/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
+index bb6e12239a0..11d34b65252 100644
+--- a/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
++++ b/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
+@@ -25,6 +25,7 @@ import { assertReturnsDefined } from '../../../../base/common/types.js';
+ import { IViewDescriptorService, ViewContainerLocation } from '../../../common/views.js';
+ import { AbstractPaneCompositePart, CompositeBarPosition } from '../paneCompositePart.js';
+ import { ActivityBarCompositeBar, ActivitybarPart } from '../activitybar/activitybarPart.js';
++import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { ActionsOrientation } from '../../../../base/browser/ui/actionbar/actionbar.js';
+ import { HoverPosition } from '../../../../base/browser/ui/hover/hoverWidget.js';
+ import { IPaneCompositeBarOptions } from '../paneCompositeBar.js';
+@@ -88,6 +89,7 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 		@IExtensionService extensionService: IExtensionService,
+ 		@IConfigurationService configurationService: IConfigurationService,
+ 		@IMenuService menuService: IMenuService,
++		@IProductService private readonly productService: IProductService,
+ 	) {
+ 		super(
+ 			Parts.SIDEBAR_PART,
+@@ -246,6 +248,12 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 	}
+ 
+ 	protected shouldShowCompositeBar(): boolean {
++		// OFICINA patch 0022: quando o produto desenha a barra de icones na BARRA DE TITULO,
++		// esta aqui nao pode existir — seriam duas barras com os mesmos quatro icones.
++		if (this.productService.activityBarInTitleBar) {
++			return false;
++		}
++
+ 		const activityBarPosition = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+ 		if (activityBarPosition !== ActivityBarPosition.TOP && activityBarPosition !== ActivityBarPosition.BOTTOM) {
+ 			return false;
+@@ -267,6 +275,14 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 	}
+ 
+ 	private shouldShowActivityBar(): boolean {
++		// OFICINA patch 0022 — ver o comentario em `shouldShowCompositeBar()`. Sem esta linha o
++		// patch se anula: com a barra do cabecalho desligada, esta funcao passaria a devolver
++		// `true` e a barra de atividade VERTICAL voltaria, que e exatamente de onde os icones
++		// sairam.
++		if (this.productService.activityBarInTitleBar) {
++			return false;
++		}
++
+ 		if (this.shouldShowCompositeBar()) {
+ 			return false;
+ 		}
+diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+index 8032ac33876..7655baa2513 100644
+--- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -536,3 +536,85 @@
+ 	width: 12px;
+ 	height: 12px;
+ }
++
++/* ─────────────────────────────────────────────────────────────────────────────────────────
++   OFICINA patch 0022 — A BARRA DE ICONES DAS VISTAS, DENTRO DA BARRA DE TITULO.
++
++   Ela entra no `.titlebar-left`, que ja e um flex em linha alinhado a esquerda: os icones
++   caem naturalmente depois do icone do app e do menu, e antes do centro. Nao ha nada de
++   posicao absoluta aqui de proposito — quem decide a ordem e a ordem dos `append` no
++   `titlebarPart.ts`.
++
++   ⚠️ O `no-drag` NAO e enfeite. A barra de titulo inteira e `-webkit-app-region: drag`, e
++   dentro de uma regiao de arrasto o Chromium entrega o mousedown ao gerenciador de janelas
++   em vez de ao elemento: o icone APARECE e nao CLICA, e arrastar por cima dele move a janela.
++   Todo controle clicavel daqui (o centro de comandos, os botoes da direita) repete esta
++   linha pelo mesmo motivo.
++   ───────────────────────────────────────────────────────────────────────────────────────── */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container {
++	display: flex;
++	align-items: center;
++	height: 100%;
++	/* Sem `flex-shrink`, em janela estreita a barra empurraria o centro de comandos para fora. */
++	flex: 0 1 auto;
++	min-width: 0;
++	overflow: hidden;
++	margin-left: 4px;
++	-webkit-app-region: no-drag;
++	/*
++	  ⚠️ O `order` E O QUE DECIDE A POSICAO AQUI, NAO A ORDEM DO `append`.
++	  Medido em 21/09/2026: com a ordem do DOM correta (appicon, menubar, container) a barra
++	  apareceu ANTES da logo — porque `.window-appicon` tem `order: 1` e `.menubar` tem
++	  `order: 2`, e um filho sem `order` vale 0, ou seja, vem primeiro. O pedido era "entre a
++	  logo na esquerda e a barra de pesquisa no centro": depois dos dois, e o centro e outro
++	  bloco do flex, que ja vem depois. (`order: 0` esta ocupado pelos controles de janela na
++	  esquerda do mac web.)
++	*/
++	order: 3;
++}
++
++/* A composite bar nasce com a altura do lugar de onde veio (o cabecalho da lateral, 35px).
++   Aqui ela tem que caber na altura da barra de titulo, qualquer que seja ela. */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .composite-bar,
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .monaco-action-bar,
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .actions-container {
++	height: 100%;
++	align-items: center;
++}
++
++/* O indicador da vista ativa e desenhado em cima (`activeBorderBottomColor` vira uma borda
++   no topo do item na orientacao horizontal). Na barra de titulo ele encostaria na moldura da
++   janela; 1px de folga o deixa visivel sem virar risco na borda. */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .action-item {
++	margin-top: 1px;
++}
++
++/* ─────────────────────────────────────────────────────────────────────────────────────────
++   O TAMANHO DE CADA ICONE — e por que estas quatro linhas nao sao enfeite.
++
++   ⚠️ MEDIDO EM 21/09/2026, e o defeito era exatamente este: dos quatro icones, os dois de
++   FONTE (Explorer e Source Control, que sao codicons) sairam com 22x22 px, e os dois de
++   IMAGEM (Chat Debug e Skills, que vem de extensao) sairam com **6x6 px** — ilegiveis.
++
++   A causa: quem da tamanho a um `.action-label` que NAO e codicon e uma regra do
++   `paneCompositePart.css`, e ela esta presa ao seletor `.pane-composite-part`. Um codicon se
++   dimensiona pela fonte e sobrevive em qualquer lugar; uma imagem de fundo sem `width` e
++   `height` colapsa no padding. Mudar a barra de lugar deixou as regras do lugar antigo para
++   tras — e so os icones que dependiam delas quebraram.
++
++   Os valores sao os mesmos de la, de proposito: 16px de label e 3px de folga lateral
++   (`paneCompositePart.css`, `.action-item.icon` e `.action-item.icon .action-label:not(.codicon)`).
++   ───────────────────────────────────────────────────────────────────────────────────────── */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .monaco-action-bar .action-item.icon {
++	display: flex;
++	align-items: center;
++	padding: 0 3px;
++}
++
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .titlebar-activity-container .monaco-action-bar .action-item.icon .action-label:not(.codicon) {
++	width: 16px;
++	height: 16px;
++	background-size: 16px;
++	background-repeat: no-repeat;
++	background-position: center center;
++}
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 6c9ea5db7d6..2f53dfb9fdc 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -41,6 +41,23 @@ import { IEditorGroupsContainer, IEditorGroupsService } from '../../../services/
+ import { ActionRunner, IAction, Separator } from '../../../../base/common/actions.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { ActionsOrientation, IActionViewItem, prepareActions } from '../../../../base/browser/ui/actionbar/actionbar.js';
++/**
++ * Quanto cada icone da barra de icones ocupa na barra de titulo, em pixels.
++ *
++ * E o mesmo numero que o nucleo usa no cabecalho da lateral com `activityBar.location: "top"`,
++ * onde os quatro icones foram medidos em x = 4, 30, 56, 82 — 26 px de passo. O valor esta aqui
++ * com nome porque ele e o unico numero magico deste patch, e um numero magico sem nome e o que
++ * ninguem consegue conferir depois.
++ */
++const LARGURA_DO_ICONE_NA_BARRA_DE_TITULO = 26;
++
++// OFICINA patch 0022: a barra de icones das vistas, desenhada aqui quando o produto pede.
++import { ActivityBarCompositeBar, ActivitybarPart } from '../activitybar/activitybarPart.js';
++import { IPaneCompositeBarOptions } from '../paneCompositeBar.js';
++import { IPaneCompositePartService } from '../../../services/panecomposite/browser/panecomposite.js';
++import { ViewContainerLocation } from '../../../common/views.js';
++import { IViewDescriptorService } from '../../../common/views.js';
++import { ACTIVITY_BAR_BADGE_BACKGROUND, ACTIVITY_BAR_BADGE_FOREGROUND, ACTIVITY_BAR_TOP_ACTIVE_BORDER, ACTIVITY_BAR_TOP_DRAG_AND_DROP_BORDER, ACTIVITY_BAR_TOP_FOREGROUND , ACTIVITY_BAR_TOP_INACTIVE_FOREGROUND } from '../../../common/theme.js'; // TITLE_BAR_ACTIVE_BACKGROUND ja vem importado acima
+ import { EDITOR_CORE_NAVIGATION_COMMANDS } from '../editor/editorCommands.js';
+ import { AnchorAlignment } from '../../../../base/browser/ui/contextview/contextview.js';
+ import { EditorPane } from '../editor/editorPane.js';
+@@ -355,6 +372,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 	private leftContent!: HTMLElement;
+ 	private centerContent!: HTMLElement;
++	// OFICINA patch 0022 — a barra de icones das vistas, quando ela vive aqui.
++	private barraDeIconesContainer: HTMLElement | undefined;
++	private readonly barraDeIcones = this._register(new MutableDisposable<ActivityBarCompositeBar>());
+ 	private rightContent!: HTMLElement;
+ 
+ 	protected readonly customMenubar = this._register(new MutableDisposable<CustomMenubarControl>());
+@@ -525,6 +545,101 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		}
+ 	}
+ 
++	/**
++	 * A BARRA DE ICONES DAS VISTAS, DESENHADA NA BARRA DE TITULO (OFICINA patch 0022).
++	 *
++	 * ⚠️ POR QUE ISTO EXISTE, se `activityBar.location: "top"` ja poe os icones em linha.
++	 *
++	 * Porque "top" os poe no CABECALHO DA BARRA LATERAL. Medido na tela do build V20-B2: os
++	 * quatro icones ficam em linha horizontal (x = 4, 30, 56, 82; mesmo y) — e somem junto com
++	 * a barra lateral. Fechar a lateral clicando no icone ativo deixa a tela SEM icone nenhum
++	 * (eles continuam no DOM com altura zero), e reabrir so por atalho ou pela paleta. Para um
++	 * produto cuja navegacao inteira sao esses quatro icones, isso e um beco.
++	 *
++	 * Aqui eles ficam num lugar que nao fecha: a barra de titulo. Clicar continua abrindo a
++	 * vista NA BARRA LATERAL, porque a dona da barra continua sendo a parte da lateral — e por
++	 * isso ela e pedida ao servico, em vez de a titlebar inventar uma dona propria.
++	 *
++	 * O ESTADO NAO E DUPLICADO. As tres chaves de armazenamento sao as mesmas que a barra
++	 * lateral e a barra de atividade vertical ja usam (`ActivitybarPart.*`): fixar, desafixar,
++	 * reordenar e esconder um icone continuam valendo para as tres, porque e um estado so.
++	 *
++	 * ⚠️ ORDEM DE CRIACAO. A parte da barra de titulo e criada ANTES da lateral
++	 * (`workbench.ts`, lista de `Create Parts`). Pedir a parte da lateral aqui a instancia mais
++	 * cedo do que o normal — o OBJETO, nao o DOM dela, que o proprio workbench cria depois, na
++	 * mesma instancia. O que esta barra usa da lateral (`openPaneComposite`, os dois eventos de
++	 * abrir/fechar e `getActivePaneComposite`) nao depende do DOM existir na construcao.
++	 */
++	private instalarBarraDeIcones(): void {
++		if (!this.productService.activityBarInTitleBar) {
++			return;
++		}
++
++		// Em janela auxiliar nao ha barra lateral para abrir: a barra seria um enfeite que
++		// nao leva a lugar nenhum.
++		if (this.isAuxiliary) {
++			return;
++		}
++
++		const parteDaLateral = this.instantiationService.invokeFunction(accessor =>
++			accessor.get(IPaneCompositePartService).getPaneCompositePart(ViewContainerLocation.Sidebar));
++
++		this.barraDeIconesContainer = append(this.leftContent, $('div.titlebar-activity-container'));
++		this.barraDeIcones.value = this.instantiationService.createInstance(
++			ActivityBarCompositeBar,
++			ViewContainerLocation.Sidebar,
++			this.opcoesDaBarraDeIcones(),
++			Parts.TITLEBAR_PART,
++			parteDaLateral,
++			false /* as acoes globais (contas, configuracoes) NAO vem: o patch 0018 as tirou daqui de proposito */
++		);
++		this.barraDeIcones.value.create(this.barraDeIconesContainer);
++
++		// ⚠️ Vista que aparece DEPOIS do ultimo layout. As extensoes registram as vistas delas
++		// em momentos diferentes da abertura, e a largura da barra e calculada por contagem:
++		// sem este gatilho, a barra fica com o tamanho que tinha quando a penultima vista
++		// chegou, e a ultima cai no transbordo para sempre.
++		const servicoDeVistas = this.instantiationService.invokeFunction(accessor => accessor.get(IViewDescriptorService));
++		this._register(servicoDeVistas.onDidChangeViewContainers(() => this.layoutBarraDeIcones(this.lastLayoutDimensions?.height ?? 0)));
++		this._register(servicoDeVistas.onDidChangeContainerLocation(() => this.layoutBarraDeIcones(this.lastLayoutDimensions?.height ?? 0)));
++	}
++
++	/**
++	 * As opcoes da barra de icones daqui.
++	 *
++	 * Sao as da barra lateral com `activityBar.location: "top"`, com tres diferencas, todas
++	 * porque o lugar e outro: o fundo e o da BARRA DE TITULO (usar o da lateral pintaria um
++	 * retangulo de cor diferente no meio da barra de cima), a dica de ajuda abre para BAIXO
++	 * (nao ha nada acima), e nao ha o submenu de vistas do modo TITULO.
++	 */
++	private opcoesDaBarraDeIcones(): IPaneCompositeBarOptions {
++		return {
++			partContainerClass: 'titlebar',
++			pinnedViewContainersKey: ActivitybarPart.pinnedViewContainersKey,
++			placeholderViewContainersKey: ActivitybarPart.placeholderViewContainersKey,
++			viewContainersWorkspaceStateKey: ActivitybarPart.viewContainersWorkspaceStateKey,
++			icon: true,
++			orientation: ActionsOrientation.HORIZONTAL,
++			recomputeSizes: true,
++			activityHoverOptions: { position: () => HoverPosition.BELOW },
++			fillExtraContextMenuActions: () => { },
++			compositeSize: 0,
++			iconSize: 16,
++			overflowActionSize: 30,
++			colors: theme => ({
++				activeBackgroundColor: theme.getColor(TITLE_BAR_ACTIVE_BACKGROUND),
++				inactiveBackgroundColor: theme.getColor(TITLE_BAR_ACTIVE_BACKGROUND),
++				activeBorderBottomColor: theme.getColor(ACTIVITY_BAR_TOP_ACTIVE_BORDER),
++				activeForegroundColor: theme.getColor(ACTIVITY_BAR_TOP_FOREGROUND),
++				inactiveForegroundColor: theme.getColor(ACTIVITY_BAR_TOP_INACTIVE_FOREGROUND),
++				badgeBackground: theme.getColor(ACTIVITY_BAR_BADGE_BACKGROUND),
++				badgeForeground: theme.getColor(ACTIVITY_BAR_BADGE_FOREGROUND),
++				dragAndDropBorder: theme.getColor(ACTIVITY_BAR_TOP_DRAG_AND_DROP_BORDER)
++			}),
++			compact: true
++		};
++	}
++
+ 	protected installMenubar(): void {
+ 		if (this.menubar) {
+ 			return; // If the menubar is already installed, skip
+@@ -595,6 +710,12 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 			this.installMenubar();
+ 		}
+ 
++		// OFICINA patch 0022: a barra de icones das vistas, entre a logo/menu e o centro.
++		//
++		// A ordem aqui E a ordem na tela: `leftContent` e um flex em linha, e este append vem
++		// depois do icone do app e do menu, e antes de qualquer coisa do `centerContent`.
++		this.instalarBarraDeIcones();
++
+ 		// Title
+ 		this.title = append(this.centerContent, $('div.window-title'));
+ 		this.createTitle();
+@@ -1052,6 +1173,46 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 		// Run after `layoutContents` so the title bar reflects its new width when measuring overflow.
+ 		this.updateTitleBarToolBarOverflow();
++
++		// OFICINA patch 0022 — ver `layoutBarraDeIcones()`.
++		this.layoutBarraDeIcones(height);
++	}
++
++	/**
++	 * Da a largura a barra de icones da barra de titulo (OFICINA patch 0022).
++	 *
++	 * ⚠️ SEM ISTO A BARRA NASCE VAZIA, E FOI ASSIM QUE ELA APARECEU NA PRIMEIRA MEDICAO: o
++	 * container existia no DOM, no lugar certo, com **largura zero e nenhum icone dentro**.
++	 * A `PaneCompositeBar` nao decide sozinha quantos itens mostra — ela espera um
++	 * `layout(largura, altura)` e so entao distribui os itens e o transbordo. A parte da
++	 * lateral faz essa chamada no `layoutCompositeBar()` dela; aqui ninguem fazia.
++	 *
++	 * A largura pedida e a que os icones PRECISAM, nao a que sobra: pedir o espaco livre
++	 * inteiro faria a barra reservar meia barra de titulo em branco. Quem limita o exagero em
++	 * janela estreita e o CSS (`flex: 0 1 auto; overflow: hidden`), e quando nao couber a
++	 * propria barra recolhe o excedente no transbordo dela.
++	 */
++	private layoutBarraDeIcones(height: number): void {
++		const barra = this.barraDeIcones.value;
++		if (!barra || !this.barraDeIconesContainer) {
++			return;
++		}
++
++		// ⚠️ A CONTA USA OS FIXADOS, NUNCA OS VISIVEIS — a primeira versao usava
++		// `getVisiblePaneCompositeIds()` e era CIRCULAR: "visivel" e o que a barra decidiu
++		// mostrar DEPOIS de receber uma largura, e a largura vinha dessa contagem. Medido em
++		// 21/09/2026: havia quatro vistas (Explorer, Source Control, Chat Debug, Skills), a
++		// conta devolveu 2, a largura saiu 52 px, e a barra desenhou UM icone mais o botao de
++		// "Additional Views" — com tres vistas escondidas num transbordo que nao precisava
++		// existir. `getPinnedPaneCompositeIds()` le o estado de fixados e os containers
++		// registrados; nao depende de largura nenhuma.
++		const quantos = barra.getPinnedPaneCompositeIds().length;
++		const largura = quantos > 0
++			? quantos * LARGURA_DO_ICONE_NA_BARRA_DE_TITULO
++			: 0;
++
++		this.barraDeIconesContainer.style.width = `${largura}px`;
++		barra.layout(largura, height);
+ 	}
+ 
+ 	/**
+diff --git a/src/vs/workbench/services/panecomposite/browser/panecomposite.ts b/src/vs/workbench/services/panecomposite/browser/panecomposite.ts
+index 3e4e569e3c2..12b9a040910 100644
+--- a/src/vs/workbench/services/panecomposite/browser/panecomposite.ts
++++ b/src/vs/workbench/services/panecomposite/browser/panecomposite.ts
+@@ -9,6 +9,7 @@ import { PaneCompositeDescriptor } from '../../../browser/panecomposite.js';
+ import { IProgressIndicator } from '../../../../platform/progress/common/progress.js';
+ import { IPaneComposite } from '../../../common/panecomposite.js';
+ import { ViewContainerLocation } from '../../../common/views.js';
++import { IPaneCompositePart } from '../../../browser/parts/paneCompositePart.js';
+ import { SINGLE_WINDOW_PARTS } from '../../layout/browser/layoutService.js';
+ 
+ export const IPaneCompositePartService = createDecorator<IPaneCompositePartService>('paneCompositePartService');
+@@ -24,6 +25,13 @@ export interface IPaneCompositePartService {
+ 
+ 	getPartId(viewContainerLocation: ViewContainerLocation): SINGLE_WINDOW_PARTS;
+ 
++	/**
++	 * The part itself, for whoever needs to hand it to something that opens view containers
++	 * in it (OFICINA patch 0022: the icon bar drawn in the title bar opens the views in the
++	 * SIDE BAR, so it needs that part as its owner).
++	 */
++	getPaneCompositePart(viewContainerLocation: ViewContainerLocation): IPaneCompositePart;
++
+ 	/**
+ 	 * Opens a viewlet with the given identifier and pass keyboard focus to it if specified.
+ 	 */
+diff --git a/src/vs/workbench/test/browser/workbenchTestServices.ts b/src/vs/workbench/test/browser/workbenchTestServices.ts
+index 489fd2172cd..08e50d74b6d 100644
+--- a/src/vs/workbench/test/browser/workbenchTestServices.ts
++++ b/src/vs/workbench/test/browser/workbenchTestServices.ts
+@@ -732,6 +732,12 @@ export class TestPaneCompositeService extends Disposable implements IPaneComposi
+ 	getPartId(viewContainerLocation: ViewContainerLocation): SINGLE_WINDOW_PARTS {
+ 		return this.getPartByLocation(viewContainerLocation).partId;
+ 	}
++	// OFICINA patch 0022: a barra de icones desenhada na barra de titulo precisa da parte da
++	// lateral como dona, para abrir a vista NELA. A interface passou a expor a parte.
++	getPaneCompositePart(viewContainerLocation: ViewContainerLocation): IPaneCompositePart {
++		return this.getPartByLocation(viewContainerLocation);
++	}
++
+ 	getRegistryId(viewContainerLocation: ViewContainerLocation): string {
+ 		return this.getPartByLocation(viewContainerLocation).registryId;
+ 	}

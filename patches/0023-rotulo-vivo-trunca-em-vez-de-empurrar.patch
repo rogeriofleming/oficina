@@ -1,0 +1,40 @@
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 2f53dfb9fdc..cfbae8eccb2 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -296,6 +296,35 @@ class OficinaLiveLabelActionViewItem extends MenuEntryActionViewItem {
+ 	override render(container: HTMLElement): void {
+ 		super.render(container);
+ 
++		// --- OFICINA: o rotulo vivo TRUNCA em vez de empurrar os controles da janela.
++		//
++		// Um item de menu comum tem texto curto e fixo, e por isso a barra de titulo nunca
++		// precisou se defender da largura dele. Um MOSTRADOR e outra coisa: o texto vem de um
++		// context key e cresce com o que estiver acontecendo (nome de conversa comprido, numeros
++		// grandes, o relogio do cache). Medido em 22/09/2026, com a janela em 676 px: o pior caso
++		// chega a 401 px, a barra de pesquisa e espremida a ZERO, a barra de cima passa a rolar e
++		// os botoes de minimizar/maximizar/fechar SAEM DO LUGAR (538 -> 561).
++		//
++		// ⚠️ `flex-shrink` NAO resolve aqui, e isso foi medido antes de escrever este patch: com
++		// `min-width: 0` e `flex-shrink: 1` no item (e tambem no conteiner de acoes), o item
++		// continuou com os mesmos 401 px e os controles continuaram andando. A barra de titulo nao
++		// da a este eixo um encolhimento que o item possa aproveitar; o que funciona e um TETO.
++		//
++		// ⚠️ E O TETO E RELATIVO, DE PROPOSITO. Um teto fixo (220 px) resolve a janela estreita e
++		// corta o texto TAMBEM na janela larga, onde sobra espaco -- estraga o caso comum para
++		// consertar o raro. Medido nos dois tamanhos: com `30vw`, a janela de 676 px trunca para
++		// 203 px (a pesquisa cede 35, os controles nao andam, a barra nao rola) e a de 1376 px
++		// mostra os 401 px INTEIROS, sem truncar nada.
++		container.classList.add('oficina-rotulo-vivo');
++		container.style.maxWidth = '30vw';
++		container.style.overflow = 'hidden';
++		if (this.label) {
++			this.label.style.overflow = 'hidden';
++			this.label.style.textOverflow = 'ellipsis';
++			this.label.style.whiteSpace = 'nowrap';
++			this.label.style.display = 'block';
++		}
++
+ 		const chaves = new Set<string>();
+ 		OFICINA_PADRAO_DA_CHAVE.lastIndex = 0;
+ 		for (const casado of oficinaTituloCru(this._menuItemAction).matchAll(OFICINA_PADRAO_DA_CHAVE)) {

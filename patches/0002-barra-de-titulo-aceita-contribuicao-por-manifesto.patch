@@ -1,0 +1,27 @@
+diff --git a/src/vs/workbench/services/actions/common/menusExtensionPoint.ts b/src/vs/workbench/services/actions/common/menusExtensionPoint.ts
+index 4e2a78f0ff0..dc7dcc7993e 100644
+--- a/src/vs/workbench/services/actions/common/menusExtensionPoint.ts
++++ b/src/vs/workbench/services/actions/common/menusExtensionPoint.ts
+@@ -41,6 +41,22 @@ const apiMenus: IAPIMenu[] = [
+ 		description: localize('menus.commandPalette', "The Command Palette"),
+ 		supportsSubmenus: false
+ 	},
++	{
++		// OFICINA: a barra de titulo passa a aceitar contribuicao por manifesto.
++		//
++		// `MenuId.TitleBar` ja e a barra de ferramentas global da barra superior — o
++		// core a consome em `titlebarPart.ts` e coloca ali os proprios botoes. O que
++		// nao existia era a porta: nenhum dos ids abertos a extensoes apontava para
++		// ela, entao juntar ao icone do app e a barra de pesquisa qualquer outra coisa
++		// era impossivel por configuracao.
++		//
++		// Abrir a porta em vez de codificar os botoes: assim o core continua sem saber
++		// quais icones a OFICINA quer, e a decisao (hoje, o explorador e a conversa)
++		// mora no manifesto da extensao embutida, onde se muda sem recompilar nada.
++		key: 'titleBar',
++		id: MenuId.TitleBar,
++		description: localize('menus.titleBar', "The title bar menu")
++	},
+ 	{
+ 		key: 'touchBar',
+ 		id: MenuId.TouchBarContext,

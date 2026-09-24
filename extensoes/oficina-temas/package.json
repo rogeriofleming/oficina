@@ -1,0 +1,36 @@
+{
+  "name": "oficina-temas",
+  "displayName": "OFICINA — temas",
+  "description": "Os dois temas de cor do produto: OFICINA Escuro e OFICINA Claro.",
+  "__comoEditar": [
+    "Os dois JSON desta pasta sao GERADOS. Nao editar a mao: a proxima geracao apaga.",
+    "A fonte e identidade/gerar_temas.py — paleta no topo, mapa explicito no meio.",
+    "Rodar:  python identidade/gerar_temas.py",
+    "",
+    "O gerador existe porque sao 876 cores e o upstream cria mais a cada versao. Tema",
+    "escrito a mao envelhece calado: a cor nova nasce com o valor da Microsoft e o",
+    "produto volta a ter buraco azul sem ninguem ver. testes/temas.mjs cobra a lista."
+  ],
+  "version": "0.0.1",
+  "publisher": "oficina",
+  "engines": {
+    "vscode": "^1.136.0"
+  },
+  "categories": [
+    "Themes"
+  ],
+  "contributes": {
+    "themes": [
+      {
+        "label": "OFICINA Escuro",
+        "uiTheme": "vs-dark",
+        "path": "./temas/oficina-escuro.json"
+      },
+      {
+        "label": "OFICINA Claro",
+        "uiTheme": "vs",
+        "path": "./temas/oficina-claro.json"
+      }
+    ]
+  }
+}
