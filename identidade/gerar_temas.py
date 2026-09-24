@@ -58,7 +58,23 @@ def mist(c1, c2, t):
     return "#%02x%02x%02x" % tuple(round(x[i] + (y[i] - x[i]) * t) for i in range(3))
 
 
-H = 34  # matiz do carvao/papel: quente, nao azulado
+H = 34  # matiz do carvao/papel do tema CLARO: quente, nao azulado
+
+# ⚠️ HF — O MATIZ DO TEMA ESCURO, e por que ele deixou de ser o H quente em 24/09/2026.
+#
+# O escuro nasceu no mesmo hue 34 do claro, com 8-10% de saturacao, sob a regra "fundo neutro
+# quente". Ele usou o produto e disse: "no app ele parece que e todo meio alaranjado (...) o fundo
+# tambem ta com esse aspecto meio cinza, escuro, alaranjado. Meio estranho, nao ta agradavel de
+# ler" — e, sobre a letra, "parece que quase nao tem nada de tonalidade azul".
+#
+# Ele estava descrevendo o que a conta diz: hue 34 e laranja-terroso, e 8% de saturacao espalhada
+# por superficie grande e chapada nao le como "neutro quente", le como bege sujo. O alvo dele, o VS
+# Code, usa cinza de saturacao ZERO (#1F1F1F, #181818, #CCCCCC).
+#
+# HF e o lado frio (220). A saturacao caiu para 3% nas superficies e 3-5% nos textos: nessa dose a
+# cor nao se nomeia — le como cinza, e o frio so aparece de relance, que e o "toque de azul" que ele
+# sentiu falta. A BRASA continua quente e intocada; sobre fundo neutro ela fica mais legivel.
+HF = 220
 
 ESCURO = dict(
     nome="OFICINA Escuro", tipo="dark",
@@ -92,12 +108,12 @@ ESCURO = dict(
     # vermelho de erro (45 -> 50, a borda do botao destrutivo caiu a 2,78:1 contra o piso 3).
     # Piso nenhum foi afrouxado.
     # superficies, do fundo para a frente
-    s_fundo=hsl(H, 8, 8),       # barra de titulo, barra de status
-    s_lateral=hsl(H, 8, 10.4),     # lateral, abas inativas
-    s_editor=hsl(H, 8, 12.9),     # o editor
-    s_painel=hsl(H, 8, 15.4),     # terminal, painel
-    s_elev=hsl(H, 8, 18),     # widget, menu, input, dropdown
-    s_elev2=hsl(H, 8, 20.4),      # hover sobre elevado
+    s_fundo=hsl(HF, 3, 8),       # barra de titulo, barra de status
+    s_lateral=hsl(HF, 3, 10.4),     # lateral, abas inativas
+    s_editor=hsl(HF, 3, 12.9),     # o editor
+    s_painel=hsl(HF, 3, 15.4),     # terminal, painel
+    s_elev=hsl(HF, 3, 18),     # widget, menu, input, dropdown
+    s_elev2=hsl(HF, 3, 20.4),      # hover sobre elevado
     # ⚠️ A BORDA FICA FORA DA ESCADA, mais clara que todas as superficies — como no claro, onde ela e
     # mais escura que todas. A 17% ela tinha a MESMA claridade do elevado (17,5%): 1,01:1. Tudo que se
     # desenha com borda em cima de uma caixa flutuante sumia (cartoes e arvore do mapa dos agentes,
@@ -107,14 +123,14 @@ ESCURO = dict(
     # o elevado, 1,78 sobre o editor, 2,03 sobre a barra
     # de titulo. Custo, declarado: toda divisoria do escuro fica mais marcada (lateral/editor, abas,
     # painel: era 1,23:1 sobre o editor). Revisao de beleza de 18/09/2026, cobrado em testes/temas.mjs.
-    borda=hsl(H, 10, 28),
-    borda_forte=hsl(H, 12, 35),   # continua um degrau acima da borda (era 24 com a borda a 17)
-    txt=hsl(38, 20, 91),
+    borda=hsl(HF, 6, 28),
+    borda_forte=hsl(HF, 8, 35),   # continua um degrau acima da borda (era 24 com a borda a 17)
+    txt=hsl(HF, 4, 97),
     # ⚠️ txt2 e O TEXTO DA INTERFACE (`foreground`, lateral, menu, barra de titulo, terminal,
     # notificacoes). Era 66 — luminancia 0,4101 contra os 0,6038 do #CCCCCC que o VS Code usa no
     # mesmo lugar, ou seja 1,47x mais escuro, e foi a peca que ele descreveu como "dificil de
     # enxergar". A 79: luminancia 0,5996, praticamente o valor dele (1,01x). 24/09/2026.
-    txt2=hsl(38, 10, 79),
+    txt2=hsl(HF, 3, 90),
     # ⚠️ txt3 e TEXTO (descricao, titulo da lateral, barra de status, aba inativa), entao cobra
     # 4,5:1. A 48% dava 4,17:1 no editor e 4,48:1 na lateral (revisao visual de 18/09/2026); a 53%
     # dava 5,68 / 5,34 / 4,97 / 4,51 sobre barra, lateral, editor e painel.
@@ -122,8 +138,8 @@ ESCURO = dict(
     # o nosso era 0,2570, e a queixa dele foi justamente "a cor dos textos". Agora 0,3545. MEDIDO
     # sobre as cinco superficies: 7,03 / 6,62 / 6,17 / 5,67 / 5,19. A distancia para o txt2 subiu de
     # 1,5:1 para 1,61:1, ou seja a hierarquia dos dois nao se perdeu ao clarear os dois.
-    txt3=hsl(38, 8, 62),
-    txt4=hsl(38, 9, 52),       # desabilitado. 44 era o piso de 3:1 sobre a lateral ANTIGA; com a
+    txt3=hsl(HF, 3, 72),
+    txt4=hsl(HF, 3, 60),       # desabilitado. 44 era o piso de 3:1 sobre a lateral ANTIGA; com a
                                # escada nova subiu a 52 e MEDE 5,20 / 4,90 / 4,57 / 4,20 / 3,84
     acento=hsl(27, 76, 54),        # brasa
     acento_claro=hsl(27, 82, 64),
@@ -139,11 +155,17 @@ ESCURO = dict(
     # Achado duma revisao independente, 06/09/2026; cobrado em testes/temas.mjs.
     erro=hsl(6, 62, 50), aviso=hsl(42, 72, 79), ok=hsl(142, 44, 47), info=hsl(205, 40, 62),
     add=hsl(142, 44, 47), rem=hsl(6, 62, 50), mod=hsl(205, 40, 55),
-    # sintaxe: frios de baixa saturacao
+    # sintaxe: frios de baixa saturacao.
+    #
+    # ⚠️ 24/09/2026 — quatro dela NAO eram frios, e um era a letra do codigo. `var` (#d8d3cb, R-B +13)
+    # pinta "Texto", "Texto simples", "Parametro", "Negrito" e "Italico", ou seja quase tudo que se le
+    # num arquivo aberto; `com` estava em R-B +28, o tom mais alaranjado do tema inteiro. Neutralizar
+    # superficie e texto de INTERFACE e deixar o corpo do codigo em bege seria consertar a moldura e
+    # nao o quadro. Os quatro passaram para HF, e `var` subiu a mesma claridade do texto de interface.
     key=hsl(207, 32, 66), string=hsl(140, 22, 62), num=hsl(258, 26, 71),
-    fun=hsl(190, 28, 68), com=hsl(36, 12, 54), var=hsl(38, 14, 82),
-    tipo_=hsl(180, 24, 66), punc=hsl(38, 8, 55), const=hsl(258, 26, 71),
-    tag=hsl(207, 32, 66), attr=hsl(190, 24, 62), oper=hsl(38, 10, 62),
+    fun=hsl(190, 28, 68), com=hsl(HF, 8, 58), var=hsl(HF, 4, 90),
+    tipo_=hsl(180, 24, 66), punc=hsl(HF, 6, 66), const=hsl(258, 26, 71),
+    tag=hsl(207, 32, 66), attr=hsl(190, 24, 62), oper=hsl(HF, 6, 72),
     sombra="#00000099",
 )
 
