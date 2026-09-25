@@ -39,12 +39,8 @@ Microsoft, pelos termos dela, é só para os produtos dela.
 
 <table>
 <tr>
-<td width="50%"><img src="docs/imagens/editor.png" alt="Editor com os arquivos abertos"><br><sub><b>O editor.</b> A brasa é a única coisa quente da tela — marca foco, item ativo e cursor, e nada mais. Por isso a sintaxe é fria.</sub></td>
-<td width="50%"><img src="docs/imagens/conexoes.png" alt="Painel de conexões MCP"><br><sub><b>Conexões.</b> Quais servidores MCP responderam, quais esperam você autenticar e quais falharam — com o motivo. Quem responde é o próprio Claude, perguntado na hora.</sub></td>
-</tr>
-<tr>
-<td width="50%"><img src="docs/imagens/skills.png" alt="Catálogo de skills"><br><sub><b>Skills.</b> As suas e as que vêm com o programa, num catálogo só.</sub></td>
-<td width="50%"><img src="docs/imagens/tema-claro.png" alt="O mesmo editor no tema claro"><br><sub><b>O tema claro.</b> Mesma régua de contraste do escuro. <code>Ctrl+Shift+P</code> → "tema".</sub></td>
+<td width="50%"><img src="docs/imagens/editor.png" alt="O editor da OFICINA no tema escuro"><br><sub><b>O escuro.</b> A brasa é a única coisa quente da tela — marca foco, item ativo e cursor, e nada mais. Por isso a sintaxe é fria: se o código tivesse laranja, o acento pararia de significar alguma coisa.</sub></td>
+<td width="50%"><img src="docs/imagens/tema-claro.png" alt="O mesmo arquivo no tema claro"><br><sub><b>O claro.</b> Mesmo arquivo, mesma régua de contraste. Troca em <code>Ctrl+Shift+P</code> → "tema".</sub></td>
 </tr>
 </table>
 
