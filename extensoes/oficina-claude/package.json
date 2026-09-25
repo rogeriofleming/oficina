@@ -94,7 +94,13 @@
   "contributes": {
     "configurationDefaults": {
       "diffEditor.renderSideBySide": false,
-      "diffEditor.codeLens": true
+      "diffEditor.codeLens": true,
+      "workbench.editorAssociations": {
+        "*.md": "default",
+        "*.markdown": "default",
+        "*.csv": "default",
+        "*.svg": "default"
+      }
     },
     "configuration": {
       "title": "OFICINA",
@@ -109,6 +115,17 @@
           "type": "boolean",
           "default": true,
           "description": "Mostrar \"Explicar\" e \"Gerar teste\" acima de cada funcao (CodeLens)."
+        },
+        "oficina.pastaDeSempre": {
+          "type": "string",
+          "default": "",
+          "scope": "machine",
+          "markdownDescription": "A pasta que a OFICINA abre quando começa **sem pasta**. Sem pasta, a conversa roda na pasta pessoal e não valem as regras do projeto (CLAUDE.md, skills do projeto, travas). Vale só neste computador, e a reinstalação não apaga. Vazio: a OFICINA pergunta."
+        },
+        "oficina.instalarExtensoesQueFaltam": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Na abertura, instala da loja (Open VSX) as extensões que a OFICINA usa e ainda não estão aqui — o Claude Code primeiro. Não reinstala o que você tirou. Desligue se preferir instalar à mão."
         }
       }
     },
@@ -426,6 +443,24 @@
         "title": "Entrar numa conta do Claude",
         "category": "OFICINA",
         "icon": "$(sign-in)"
+      },
+      {
+        "command": "oficina.html.verPagina",
+        "title": "Ver a página",
+        "category": "OFICINA",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "oficina.html.verCodigo",
+        "title": "Ver o código",
+        "category": "OFICINA",
+        "icon": "$(code)"
+      },
+      {
+        "command": "oficina.navegador.ladoALado",
+        "title": "Celular e computador lado a lado (o celular é imitação: motor do Chrome)",
+        "category": "OFICINA",
+        "icon": "$(split-horizontal)"
       }
     ],
     "menus": {
@@ -449,6 +484,21 @@
           "command": "oficina.rejeitarTudo",
           "when": "resourceScheme == oficina-proposta",
           "group": "navigation@2"
+        },
+        {
+          "command": "oficina.html.verPagina",
+          "when": "resourceScheme == file && resourceExtname =~ /^\\.html?$/i && activeEditor != workbench.editor.browser",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.html.verCodigo",
+          "when": "activeEditor == workbench.editor.browser",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.navegador.ladoALado",
+          "when": "resourceScheme == file && resourceExtname =~ /^\\.html?$/i && activeEditor != workbench.editor.browser",
+          "group": "navigation"
         }
       ],
       "titleBar": [
@@ -617,6 +667,18 @@
           "when": "editorHasSelection",
           "group": "oficina@4"
         }
+      ],
+      "explorer/context": [
+        {
+          "command": "oficina.html.verPagina",
+          "when": "resourceScheme == file && resourceExtname =~ /^\\.html?$/i",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.html.verCodigo",
+          "when": "resourceScheme == file && resourceExtname =~ /^\\.html?$/i",
+          "group": "navigation"
+        }
       ]
     },
     "walkthroughs": [
@@ -628,7 +690,7 @@
           {
             "id": "conversa",
             "title": "A conversa é o começo",
-            "description": "A OFICINA abre direto na conversa. É dela que o trabalho sai: peça em português o que você quer, e o resto acontece nos arquivos.\n\n⚠️ **O agente age sem pedir aprovação, de fábrica** — ele edita arquivo e roda comando sem parar a cada passo. Numa pasta que você só abriu para olhar, isso merece atenção. O seletor de modo, no pé da conversa, troca isso para a conversa seguinte.\n\n[Abrir a conversa](command:oficina.abrirConversaOuExplicar)",
+            "description": "A OFICINA abre direto na conversa quando há uma pasta aberta (sem pasta, ela pergunta qual abrir antes: sem pasta, as instruções do seu projeto não seriam carregadas). É dela que o trabalho sai: peça em português o que você quer, e o resto acontece nos arquivos.\n\n⚠️ **O agente age sem pedir aprovação, de fábrica** — ele edita arquivo e roda comando sem parar a cada passo. Numa pasta que você só abriu para olhar, isso merece atenção. O seletor de modo, no pé da conversa, troca isso para a conversa seguinte.\n\n[Abrir a conversa](command:oficina.abrirConversaOuExplicar)",
             "media": {
               "markdown": "boas-vindas/conversa.md",
               "altText": "A conversa ocupando o editor"
@@ -640,7 +702,7 @@
           {
             "id": "arquivos",
             "title": "A barra de ícones, em cima: arquivos, Git, skills, conexões e conta",
-            "description": "A barra de ícones fica **no topo**, na horizontal, entre a marca e a barra de pesquisa. Ela tem seis botões: **Arquivos** (as cores dizem o que o Git vê: modificado, novo, ignorado), **Git** (mudanças, commit, empurrar e puxar), **Tokens** (o detalhe do gasto da conversa), **Skills**, **Conexões** (quais MCPs responderam e quais estão esperando você) e **Conta** (em qual conta do Claude você está, e por onde sair dela). Um clique abre, outro clique no mesmo botão fecha. O navegador, que abre uma página e imita a tela de um celular, tablet ou monitor, fica na paleta de comandos (Ctrl+Shift+P, **Navegador**).\n\n[Abrir os arquivos](command:workbench.view.explorer)\n[Abrir o Git](command:workbench.view.scm)\n[Ver as conexões](command:oficina.mcps.abrir)\n[Conectar ao GitHub](command:oficina.conectarGithub)",
+            "description": "A barra de ícones fica **no topo**, na horizontal, logo depois da marca. Ela tem seis botões de fábrica (as extensões instaladas, como o Claude Code, podem acrescentar outros): **Arquivos** (as cores dizem o que o Git vê: modificado, novo, ignorado), **Git** (mudanças, commit, empurrar e puxar), **Tokens** (o detalhe do gasto da conversa), **Skills**, **Conexões** (quais MCPs responderam e quais estão esperando você) e **Conta** (em qual conta do Claude você está, e por onde sair dela). Um clique abre, outro clique no mesmo botão fecha. O navegador, que abre uma página e imita a tela de um celular, tablet ou monitor, fica na paleta de comandos (Ctrl+Shift+P, **Navegador**).\n\n[Abrir os arquivos](command:workbench.view.explorer)\n[Abrir o Git](command:workbench.view.scm)\n[Ver as conexões](command:oficina.mcps.abrir)\n[Conectar ao GitHub](command:oficina.conectarGithub)",
             "media": {
               "markdown": "boas-vindas/arquivos.md",
               "altText": "Os seis botões da barra de cima"
@@ -676,7 +738,7 @@
           {
             "id": "medidas",
             "title": "Quanto a conversa gastou, quanto falta do plano, e as suas skills",
-            "description": "Os números da conversa ficam na **barra de cima**, à direita da pesquisa: contexto agora, total processado, custo estimado e o **relógio do cache** (os minutos até a conversa esfriar; vencido, a próxima mensagem relê tudo e custa mais). Um clique abre o detalhe: modelos, subagentes e as skills que a conversa carregou.\n\nLogo abaixo, a **faixa do limite do plano**: `5h` e `7d`, cada um com a barra preenchida e a porcentagem. O botão à esquerda dela abre o detalhe do consumo.\n\nAs skills ficam no botão **Skills** da barra de ícones: um clique entrega a skill à conversa, e a estrela e o olho arrumam a lista do seu jeito.\n\n[Ver os tokens](command:oficina.tokens.abrir)\n[Ver o consumo do plano](command:oficina.limite.detalhe)\n[Ver as skills](command:oficina.skills.abrir)",
+            "description": "Os números da conversa ficam na **barra de cima**, à direita da pesquisa: o custo estimado (em US$), o tamanho da conversa agora e tudo que já passou pelo modelo. Um clique abre o detalhe: modelos, subagentes e as skills que a conversa carregou. O **relógio do cache** (os minutos até a conversa esfriar; vencido, a próxima mensagem relê tudo e custa mais) fica no pé da conversa, ao lado do modelo.\n\nA **faixa do limite do plano** fica na barra de cima, depois dos ícones, quando cabe (em janela estreita, desce para uma linha logo abaixo): `5h` e `7d`, cada um com a barra preenchida e a porcentagem. O botão à esquerda dela abre o detalhe do consumo.\n\nAs skills ficam no botão **Skills** da barra de ícones: um clique entrega a skill à conversa, e a estrela e o olho arrumam a lista do seu jeito.\n\n[Ver os tokens](command:oficina.tokens.abrir)\n[Ver o consumo do plano](command:oficina.limite.detalhe)\n[Ver as skills](command:oficina.skills.abrir)",
             "media": {
               "markdown": "boas-vindas/medidas.md",
               "altText": "As vistas de tokens e de skills"

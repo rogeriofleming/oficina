@@ -134,7 +134,18 @@ function sessaoDaPasta(pastaAberta, {
     mesmaPasta(s.cwd, pastaAberta) &&
     vivo(s.pid))
   if (!candidatas.length) return null
+  const escolhida = escolherEmUso(candidatas, escritaEm)
+  return escolhida ? retrato(escolhida) : null
+}
 
+/**
+ * Das conversas candidatas, a que está EM USO — ou `null` quando nada no disco decide.
+ *
+ * Separada de `sessaoDaPasta` na V27 para servir também a `conversasDaJanela`: as duas perguntam
+ * "qual destas é a da tela?", e a resposta tem de ser a mesma nos dois caminhos.
+ */
+function escolherEmUso(candidatas, escritaEm = escritaDoTranscrito) {
+  if (!candidatas.length) return null
   /*
     ⚠️ COM MAIS DE UMA CONVERSA VIVA NA MESMA PASTA, O `updatedAt` DO REGISTRO ESCOLHE A ERRADA.
 
@@ -160,7 +171,7 @@ function sessaoDaPasta(pastaAberta, {
   */
   const trabalhando = candidatas.filter(c => c.status === 'busy')
   const disputa = trabalhando.length === 1 ? trabalhando : candidatas
-  if (disputa.length === 1) return retrato(disputa[0])
+  if (disputa.length === 1) return disputa[0]
 
   let melhorEscrita = null
   let empateNaEscrita = false
@@ -170,7 +181,7 @@ function sessaoDaPasta(pastaAberta, {
     if (!melhorEscrita || q > melhorEscrita.quando) { melhorEscrita = { quando: q, s: c }; empateNaEscrita = false }
     else if (q === melhorEscrita.quando) empateNaEscrita = true
   }
-  if (melhorEscrita && !empateNaEscrita) return retrato(melhorEscrita.s)
+  if (melhorEscrita && !empateNaEscrita) return melhorEscrita.s
 
   // ⚠️ EMPATE DEVOLVE `null` — E ISTO É CÓDIGO, NÃO PROMESSA DE COMENTÁRIO. A primeira versão desta
   // função dizia no cabeçalho que empate devolvia `null` e, no corpo, usava `>` estrito: em empate
@@ -185,7 +196,31 @@ function sessaoDaPasta(pastaAberta, {
     else if (quando === melhor.quando) empatada = true
   }
   if (!melhor || empatada) return null
-  return retrato(melhor.s)
+  return melhor.s
+}
+
+/**
+ * TODAS as conversas desta janela, e qual delas está em uso (V27).
+ *
+ * "Desta janela" = filha do host de extensões em que esta extensão roda (`paisDosProcessos.js`
+ * explica e traz a medição). É isso que deixa a barra mostrar as conversas da OFICINA sem misturar
+ * as do VS Code aberto na mesma pasta — e sem depender de pasta nenhuma, o que também resolve a
+ * janela sem pasta.
+ *
+ * Devolve `null` quando o pai de NENHUMA candidata é conhecido ainda (a consulta é assíncrona): quem
+ * chama cai no critério antigo, por pasta, em vez de mostrar uma lista vazia que seria mentira.
+ */
+function conversasDaJanela(hostPid, paiDe, {
+  sessoes = null, pasta = undefined, vivo = processoVivo, escritaEm = escritaDoTranscrito,
+} = {}) {
+  const todas = sessoes || lerTodas(pasta === undefined ? pastaDasSessoes() : pasta)
+  const doEditor = todas.filter(s => ENTRADAS_DO_EDITOR.includes(s.entrypoint) && vivo(s.pid))
+  if (!doEditor.length) return { conversas: [], emUso: null }
+  const pais = doEditor.map(s => paiDe(s))
+  if (pais.every(p => p === undefined)) return null
+  const minhas = doEditor.filter((s, i) => pais[i] === hostPid)
+  const escolhida = escolherEmUso(minhas, escritaEm)
+  return { conversas: minhas.map(retrato), emUso: escolhida ? escolhida.sessionId : null }
 }
 
 /** O retrato que quem desenha recebe — um lugar só, para as três saídas acima não divergirem. */
@@ -206,4 +241,4 @@ function retrato(s) {
   }
 }
 
-module.exports = { pastaDasSessoes, lerTodas, sessaoDaPasta, mesmaPasta, processoVivo, escritaDoTranscrito, ENTRADAS_DO_EDITOR, NOMES_ESCOLHIDOS }
+module.exports = { pastaDasSessoes, lerTodas, sessaoDaPasta, conversasDaJanela, escolherEmUso, mesmaPasta, processoVivo, escritaDoTranscrito, ENTRADAS_DO_EDITOR, NOMES_ESCOLHIDOS }

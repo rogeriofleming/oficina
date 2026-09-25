@@ -1,10 +1,15 @@
-## Tokens e skills
+## Tokens, limites e skills
 
 **Tokens**: sempre na barra de cima; clique neles.
-Contexto agora, total processado, custo estimado,
-modelos, subagentes e as skills que a conversa usou.
+O custo estimado (em US$), o tamanho da conversa agora
+e tudo que já passou pelo modelo — conversa por conversa,
+com subagentes e as skills que ela usou.
 
-**O relógio do cache ao lado**: os minutos até o cache vencer.
+**Limites do plano (5h e 7d)**: na barra de cima, depois
+dos ícones, quando cabem. Em janela estreita, descem
+para uma linha logo abaixo.
+
+**O relógio do cache**: no pé da conversa, ao lado do modelo.
 Vencido, a próxima mensagem relê a conversa inteira
 e custa mais.
 

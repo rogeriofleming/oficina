@@ -1,0 +1,442 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index dcf56d29f74..fb15b756634 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -224,6 +224,13 @@ export interface IProductConfiguration {
+ 	 */
+ 	readonly bannerGaugesContextKey?: string;
+ 
++	/**
++	 * OFICINA patch 0028: when true, the title bar hosts the banner gauges while there is room
++	 * for them, right after the view icons, and the command center leaves the middle to sit next
++	 * to them (narrower). When the window gets too narrow, the gauges go back to the banner row.
++	 */
++	readonly titleBarGauges?: boolean;
++
+ 	/**
+ 	 * Command ids to drop from the editor TAB BAR toolbar (the row of icons at the right of the tabs).
+ 	 *
+diff --git a/src/vs/workbench/browser/parts/banner/bannerPart.ts b/src/vs/workbench/browser/parts/banner/bannerPart.ts
+index 09944303488..f02af674425 100644
+--- a/src/vs/workbench/browser/parts/banner/bannerPart.ts
++++ b/src/vs/workbench/browser/parts/banner/bannerPart.ts
+@@ -33,6 +33,8 @@ import { Codicon } from '../../../../base/common/codicons.js';
+ import { BannerFocused } from '../../../common/contextkeys.js';
+ import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { ICommandService } from '../../../../platform/commands/common/commands.js';
++import { DisposableStore } from '../../../../base/common/lifecycle.js';
++import { titleBarGaugesSlot } from './gaugesSlot.js';
+ 
+ const gaugeExpandIcon = registerIcon('banner-gauges-expand', Codicon.graphLine, localize('bannerGaugesExpandIcon', 'Icon of the button that opens the details behind the banner gauges.'));
+ 
+@@ -117,6 +119,8 @@ export class BannerPart extends Part implements IBannerService {
+ 					this.updateGauges();
+ 				}
+ 			}));
++			// OFICINA patch 0028: the title bar offered (or took back) a slot for the gauges.
++			this._register(titleBarGaugesSlot.onDidChange(() => this.updateGauges()));
+ 			this.updateGauges();
+ 		}
+ 
+@@ -136,6 +140,26 @@ export class BannerPart extends Part implements IBannerService {
+ 
+ 		const gauges = this.readGauges();
+ 
++		// OFICINA patch 0028: tell the title bar whether there is anything to host, BEFORE reading the
++		// slot — it may offer or take back the slot right here, and the lines below follow its answer.
++		titleBarGaugesSlot.setTemMedidores(gauges.length > 0);
++
++		// OFICINA patch 0028: while the title bar offers a slot, the gauges live THERE, and the banner
++		// row is not used for them — that row is the height this patch gives back to the editor. A
++		// message banner no longer competes with the gauges in this case: the message gets the row,
++		// the gauges stay in the title bar.
++		const slot = titleBarGaugesSlot.element;
++		if (slot) {
++			if (this.gaugesShowing && !this.item) {
++				clearNode(this.element);
++				this.setVisibility(false);
++			}
++			this.gaugesShowing = false;
++			this.renderGauges(slot, gauges);
++			titleBarGaugesSlot.notifyRendered();
++			return;
++		}
++
+ 		// A message banner wins: do not touch the DOM while one is on screen. When it closes,
+ 		// close() calls back here and the gauges return.
+ 		if (this.item) {
+@@ -152,10 +176,28 @@ export class BannerPart extends Part implements IBannerService {
+ 			return;
+ 		}
+ 
+-		clearNode(this.element);
+ 		this.element.removeAttribute('aria-label');
++		this.renderGauges(this.element, gauges);
++
++		this.gaugesShowing = true;
++		this.setVisibility(true);
++	}
+ 
+-		const container = append(this.element, $('div.gauges-container'));
++	/**
++	 * Listeners of the gauge row currently drawn. Cleared on every redraw — until patch 0028 each
++	 * redraw registered new listeners on the part and never released the old ones.
++	 */
++	private readonly gaugeListeners = this._register(new DisposableStore());
++
++	/** Draws the gauge row into `host` (the banner, or the title bar slot of patch 0028). */
++	private renderGauges(host: HTMLElement, gauges: { rotulo: string; pct: number }[]): void {
++		clearNode(host);
++		this.gaugeListeners.clear();
++		if (!gauges.length) {
++			return;
++		}
++
++		const container = append(host, $('div.gauges-container'));
+ 
+ 		if (this.expandCommandId) {
+ 			const button = append(container, $('a.gauges-expand'));
+@@ -168,8 +210,8 @@ export class BannerPart extends Part implements IBannerService {
+ 					this.commandService.executeCommand(this.expandCommandId);
+ 				}
+ 			};
+-			this._register(addDisposableListener(button, EventType.CLICK, run));
+-			this._register(addDisposableListener(button, EventType.KEY_DOWN, (e: KeyboardEvent) => {
++			this.gaugeListeners.add(addDisposableListener(button, EventType.CLICK, run));
++			this.gaugeListeners.add(addDisposableListener(button, EventType.KEY_DOWN, (e: KeyboardEvent) => {
+ 				if (e.key === 'Enter' || e.key === ' ') {
+ 					e.preventDefault();
+ 					run();
+@@ -190,9 +232,6 @@ export class BannerPart extends Part implements IBannerService {
+ 
+ 			append(item, $('span.gauge-value')).textContent = `${gauge.pct}%`;
+ 		}
+-
+-		this.gaugesShowing = true;
+-		this.setVisibility(true);
+ 	}
+ 
+ 	/** The command the expand button runs, as published alongside the gauges. */
+diff --git a/src/vs/workbench/browser/parts/banner/gaugesSlot.ts b/src/vs/workbench/browser/parts/banner/gaugesSlot.ts
+new file mode 100644
+index 00000000000..e2c3b9b24db
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/banner/gaugesSlot.ts
+@@ -0,0 +1,68 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { Emitter, Event } from '../../../../base/common/event.js';
++
++/**
++ * OFICINA patch 0028: where the banner gauges are drawn.
++ *
++ * The banner draws the gauges (patch 0017). When the product asks for it (`titleBarGauges`), the
++ * title bar offers a slot for them — and only while there is room: it takes the slot back when the
++ * window gets too narrow, and the gauges return to the banner row by themselves.
++ *
++ * One renderer, two hosts. The title bar never draws a gauge; it only says "here, if it fits".
++ * A module-level singleton because the two parts do not know each other, and the title bar of an
++ * auxiliary window never offers a slot (there is no banner there).
++ */
++class GaugesSlot {
++	private _element: HTMLElement | undefined;
++	private readonly _onDidChange = new Emitter<void>();
++	readonly onDidChange: Event<void> = this._onDidChange.event;
++
++	get element(): HTMLElement | undefined {
++		return this._element;
++	}
++
++	set(element: HTMLElement | undefined): void {
++		if (element !== this._element) {
++			this._element = element;
++			this._onDidChange.fire();
++		}
++	}
++
++	/**
++	 * The banner redrew the gauges inside the slot. Their width may have changed (a third gauge, a
++	 * longer label), and only the title bar can say whether they still fit — it listens to this.
++	 */
++	private readonly _onDidRender = new Emitter<void>();
++	readonly onDidRender: Event<void> = this._onDidRender.event;
++
++	notifyRendered(): void {
++		this._onDidRender.fire();
++	}
++
++	/**
++	 * Whether the banner has any gauge to draw — told by the banner on every update, whoever hosts the
++	 * gauges. The title bar offers the slot only when this is true: offering it for an empty list moved
++	 * the search out of the centre and shrank it for nothing (measured 25/09/2026, a profile with no
++	 * gauges: the class on, the search at 147 px, the slot empty).
++	 */
++	private _temMedidores = false;
++	private readonly _onDidChangeTemMedidores = new Emitter<void>();
++	readonly onDidChangeTemMedidores: Event<void> = this._onDidChangeTemMedidores.event;
++
++	get temMedidores(): boolean {
++		return this._temMedidores;
++	}
++
++	setTemMedidores(tem: boolean): void {
++		if (tem !== this._temMedidores) {
++			this._temMedidores = tem;
++			this._onDidChangeTemMedidores.fire();
++		}
++	}
++}
++
++export const titleBarGaugesSlot = new GaugesSlot();
+diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+index f0180de32f3..e69d8cdf45c 100644
+--- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -639,3 +639,114 @@
+ 	align-items: center;
+ 	justify-content: center;
+ }
++
++/* OFICINA patch 0028: os medidores do limite NA BARRA DE TITULO, quando cabem.
++   Ordem pedida pelo dono do produto: icones -> medidores -> pesquisa -> direita. A pesquisa sai do
++   centro e fica com 35% da largura que tinha (415 -> 145 px, medido): centralizada, ela so cedia
++   metade do que encolhia para a esquerda, e os medidores nao cabiam nem com ela em largura zero. */
++.monaco-workbench .part.titlebar > .titlebar-container.has-center.oficina-medidores-na-barra > .titlebar-left {
++	width: auto;
++	flex-grow: 0;
++	flex-shrink: 0;
++}
++
++.monaco-workbench .part.titlebar > .titlebar-container.has-center.oficina-medidores-na-barra > .titlebar-right {
++	width: auto;
++	flex-grow: 1;
++}
++
++.monaco-workbench .part.titlebar > .titlebar-container.oficina-medidores-na-barra > .titlebar-center > .window-title > .command-center .action-item.command-center-center {
++	width: 145px;
++	max-width: 145px;
++}
++
++.monaco-workbench .part.titlebar > .titlebar-container.oficina-medidores-na-barra > .titlebar-center > .window-title > .command-center .action-item.command-center-center .action-item.command-center-quick-pick {
++	max-width: 145px;
++}
++
++/* Os medidores em si: o mesmo desenho da faixa (patch 0017), compacto — barrinhas 10% menores
++   (90 -> 81 px) e o vao entre os dois apertado (18 -> 12 px), como aprovado. Sem `no-drag` nos
++   medidores: eles continuam sendo alca para arrastar a janela; so o botao de expandir nao e. */
++.monaco-workbench .part.titlebar .titlebar-gauges {
++	display: flex;
++	align-items: center;
++	height: 100%;
++	flex-shrink: 0;
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauges-container {
++	display: flex;
++	flex-direction: row;
++	align-items: center;
++	gap: 12px;
++	padding: 0 8px;
++	height: 100%;
++	color: var(--vscode-titleBar-activeForeground);
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauges-expand {
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	flex-shrink: 0;
++	width: 20px;
++	height: 20px;
++	border-radius: 4px;
++	cursor: pointer;
++	-webkit-app-region: no-drag;
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauges-expand:hover {
++	background-color: var(--vscode-toolbar-hoverBackground);
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauges-expand:focus-visible {
++	outline: 1px solid var(--vscode-focusBorder);
++	outline-offset: -1px;
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauge {
++	display: flex;
++	flex-direction: row;
++	align-items: center;
++	gap: 6px;
++	flex-shrink: 0;
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauge-label {
++	letter-spacing: .02em;
++	white-space: nowrap;
++}
++
++/* A parte apagada e pseudo-elemento, e nao `opacity` no trilho: `opacity` apagaria tambem o
++   preenchimento, e a barra leria ao contrario (medido no 0017). */
++.monaco-workbench .part.titlebar .titlebar-gauges .gauge-track {
++	position: relative;
++	width: 81px;
++	height: 6px;
++	border-radius: 3px;
++	overflow: hidden;
++	flex-shrink: 0;
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauge-track::before {
++	content: '';
++	position: absolute;
++	inset: 0;
++	background-color: var(--vscode-titleBar-activeForeground);
++	opacity: 0.22;
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauge-fill {
++	position: relative;
++	height: 100%;
++	border-radius: 3px;
++	background-color: var(--vscode-progressBar-background);
++}
++
++.monaco-workbench .part.titlebar .titlebar-gauges .gauge-value {
++	min-width: 34px;
++	text-align: right;
++	font-variant-numeric: tabular-nums;
++	white-space: nowrap;
++}
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 3be147fda03..ad5920993c4 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -12,13 +12,14 @@ import { MenuBarVisibility, getTitleBarStyle, getMenuBarVisibility, hasCustomTit
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+ import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+-import { DisposableStore, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
++import { DisposableStore, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { IBrowserWorkbenchEnvironmentService } from '../../../services/environment/browser/environmentService.js';
+ import { IThemeService } from '../../../../platform/theme/common/themeService.js';
+ import { TITLE_BAR_ACTIVE_BACKGROUND, TITLE_BAR_ACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_FOREGROUND, TITLE_BAR_INACTIVE_BACKGROUND, TITLE_BAR_BORDER, WORKBENCH_BACKGROUND } from '../../../common/theme.js';
+ import { isMacintosh, isWindows, isLinux, isWeb, isNative, platformLocale } from '../../../../base/common/platform.js';
+ import { Color } from '../../../../base/common/color.js';
+-import { EventType, EventHelper, Dimension, append, $, addDisposableListener, prepend, reset, getWindow, getWindowId, isAncestor, getActiveDocument, isHTMLElement } from '../../../../base/browser/dom.js';
++import { EventType, EventHelper, Dimension, append, $, addDisposableListener, prepend, reset, getWindow, getWindowId, isAncestor, getActiveDocument, isHTMLElement, clearNode } from '../../../../base/browser/dom.js';
++import { titleBarGaugesSlot } from '../banner/gaugesSlot.js';
+ import { CustomMenubarControl } from './menubarControl.js';
+ import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+ import { Emitter, Event } from '../../../../base/common/event.js';
+@@ -768,6 +769,9 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		// depois do icone do app e do menu, e antes de qualquer coisa do `centerContent`.
+ 		this.instalarBarraDeIcones();
+ 
++		// OFICINA patch 0028: o encaixe dos medidores do limite, logo depois dos icones.
++		this.instalarEncaixeDosMedidores();
++
+ 		// Title
+ 		this.title = append(this.centerContent, $('div.window-title'));
+ 		this.createTitle();
+@@ -1228,6 +1232,98 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 		// OFICINA patch 0022 — ver `layoutBarraDeIcones()`.
+ 		this.layoutBarraDeIcones(height);
++
++		// OFICINA patch 0028 — depois dos icones, que mudam a largura da esquerda.
++		this.acomodarMedidores();
++	}
++
++	/**
++	 * OFICINA patch 0028: os medidores do limite na barra de titulo, quando cabem.
++	 *
++	 * Pedido do dono do produto (25/09/2026): os limites na barra de cima, depois dos icones, e a
++	 * pesquisa menor e FORA do centro — a ordem vira icones → medidores → pesquisa → direita. Medido
++	 * na janela real antes de escrever isto: em tela cheia (1376 px) cabem; em meia tela (696 px)
++	 * sobram 78 px para ~330 de medidores. Por isso o encaixe so e oferecido quando cabe, e e retirado
++	 * quando deixa de caber: os medidores voltam para a faixa de baixo sozinhos (patch 0017), e nunca
++	 * cortam nem empurram os botoes da janela.
++	 *
++	 * Quem desenha continua sendo a faixa (`bannerPart.ts`); aqui so se oferece o lugar.
++	 */
++	private encaixeDosMedidores: HTMLElement | undefined;
++	/** A largura dos medidores da ultima vez que estiveram aqui. Chute inicial: o medido em 25/09. */
++	private larguraDosMedidores = 330;
++
++	private instalarEncaixeDosMedidores(): void {
++		if (!this.productService.titleBarGauges || this.isAuxiliary) {
++			return;
++		}
++		this.encaixeDosMedidores = append(this.leftContent, $('div.titlebar-gauges'));
++		this.encaixeDosMedidores.style.display = 'none';
++		// A conta de "cabe?" tambem tem de rodar quando os medidores mudam de largura e quando entram
++		// icones novos — nao so no redimensionamento (revisao de 25/09/2026: o instalador da primeira
++		// abertura acrescenta vistas, e a pesquisa era espremida ate zero ate o proximo redimensionamento).
++		this._register(titleBarGaugesSlot.onDidRender(() => this.acomodarMedidores()));
++		// E quando a faixa passa a ter (ou deixa de ter) medidores: sem medidor nao ha o que acomodar.
++		this._register(titleBarGaugesSlot.onDidChangeTemMedidores(() => this.acomodarMedidores()));
++		const servicoDeVistas = this.instantiationService.invokeFunction(accessor => accessor.get(IViewDescriptorService));
++		this._register(servicoDeVistas.onDidChangeViewContainers(() => this.acomodarMedidores()));
++		this._register(toDisposable(() => {
++			if (titleBarGaugesSlot.element === this.encaixeDosMedidores) {
++				titleBarGaugesSlot.set(undefined);
++			}
++		}));
++	}
++
++	/**
++	 * Cabe? A conta e pela largura NATURAL de cada peca — nao por "a barra rolou": a pesquisa encolhe
++	 * calada quando falta espaco (`min-width: 0`), e o rotulo de tokens trunca (patch 0023); nenhum dos
++	 * dois apareceria como rolagem. Por isso:
++	 *   - a pesquisa entra com a largura FIXA que ela tera com os medidores (`LARGURA_DA_PESQUISA`), e
++	 *     nao com a que ela tem agora — sem os medidores ela volta ao tamanho normal;
++	 *   - cada filho da direita entra com o MAIOR entre o que ocupa e o que pediria (`scrollWidth`), para
++	 *     o rotulo de tokens ja truncado nao parecer menor do que e.
++	 * A classe que tira a pesquisa do centro so fica ligada ENQUANTO os medidores estao aqui: sem eles, a
++	 * barra de titulo volta a ser a de antes (revisao: a primeira versao deixava a classe sempre ligada, e
++	 * o `flex-shrink: 0` da esquerda anulava o encolhimento dos icones de que o patch 0022 depende).
++	 */
++	private static readonly LARGURA_DA_PESQUISA = 145;
++
++	private acomodarMedidores(): void {
++		const encaixe = this.encaixeDosMedidores;
++		if (!encaixe) {
++			return;
++		}
++		const larguraNatural = (el: HTMLElement | undefined, exceto?: HTMLElement) => {
++			let soma = 0;
++			for (const filho of Array.from(el?.children ?? [])) {
++				if (filho !== exceto) {
++					const f = filho as HTMLElement;
++					soma += Math.max(f.getBoundingClientRect().width, f.scrollWidth);
++				}
++			}
++			return soma;
++		};
++		const aqui = titleBarGaugesSlot.element === encaixe;
++		if (aqui && encaixe.scrollWidth > 0) {
++			this.larguraDosMedidores = encaixe.scrollWidth;
++		}
++		// Margens da pesquisa (10 + 10, `titlebarpart.css`) e um respiro de 16 px para a conta nao
++		// ficar oscilando no limite a cada pixel de redimensionamento.
++		const necessario = larguraNatural(this.leftContent, encaixe) + this.larguraDosMedidores
++			+ BrowserTitlebarPart.LARGURA_DA_PESQUISA + 20 + larguraNatural(this.rightContent) + 16;
++		// So se oferece o encaixe quando ha medidor para por nele (sonda de 25/09/2026: sem esta condicao,
++		// um perfil sem medidores tirava a pesquisa do centro e a encolhia com o encaixe vazio).
++		const cabe = titleBarGaugesSlot.temMedidores && necessario <= this.rootContainer.clientWidth;
++		if (cabe && !aqui) {
++			this.rootContainer.classList.add('oficina-medidores-na-barra');
++			encaixe.style.display = '';
++			titleBarGaugesSlot.set(encaixe);
++		} else if (!cabe && aqui) {
++			this.rootContainer.classList.remove('oficina-medidores-na-barra');
++			encaixe.style.display = 'none';
++			titleBarGaugesSlot.set(undefined);
++			clearNode(encaixe);
++		}
+ 	}
+ 
+ 	/**

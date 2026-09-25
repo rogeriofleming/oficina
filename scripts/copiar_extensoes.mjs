@@ -114,4 +114,88 @@ for (const origem of [path.join(repo, 'extensoes'), camada && camada !== '0' ? p
     n++
   }
 }
+/**
+ * V27 — AS EXTENSOES DA LOJA QUE VAO DENTRO DO INSTALADOR (`extensoes/embutidas-da-loja.txt`).
+ *
+ * Ate a V26 as extensoes da Open VSX (`lista.txt`) so eram instaladas no PERFIL da maquina de
+ * desenvolvimento, por `instalar_extensoes.mjs` — o instalador levava apenas as de `extensoes/`. Por
+ * isso quem instalava a OFICINA nao tinha leitor de PDF nem de slide. Estas sao abertas do `.vsix` que
+ * `baixar_extensoes.mjs` ja conferiu (nunca baixadas aqui) e copiadas como embutidas.
+ *
+ * ⚠️ O `node_modules` DELAS VIAJA, ao contrario do das nossas: o `.vsix` ja traz as dependencias
+ * empacotadas pelo autor, e nao ha lock nem fonte para um `npm ci` refazer. QUANDO HA — o
+ * vscode-office nao tem pasta nenhuma (usa bundler); ver abaixo o que isso quebrava.
+ *
+ * ⚠️ FALTAR O `.vsix` ABORTA — mesma razao do `npm ci` acima: um instalador sem o leitor que a lista
+ * promete sairia "verde" e errado.
+ */
+function extensoesDaLojaEmbutidas() {
+  const lista = path.join(repo, 'extensoes', 'embutidas-da-loja.txt')
+  if (!fs.existsSync(lista)) return 0
+  const ids = fs.readFileSync(lista, 'utf8').split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+  const cache = path.join(process.env.OFICINA_BUILD || path.join(process.env.SystemDrive || 'C:', 'oficina-build'), 'extensoes-cache')
+  // O `tar` do Windows (bsdtar) abre zip; o do Git Bash (GNU) nao. Por isso o caminho e explicito.
+  const tar = process.platform === 'win32' ? path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe') : 'unzip'
+  let feitas = 0
+  for (const id of ids) {
+    const vsix = fs.existsSync(cache)
+      // A versão MAIS NOVA por número, não por texto (revisão): como texto, "4.10.0" vem antes de
+      // "4.2.0", e com duas versões no cache a velha seria embutida calada.
+      ? fs.readdirSync(cache).filter(f => f.startsWith(id + '-') && f.endsWith('.vsix'))
+        .sort((a, b) => {
+          const v = f => (f.slice(id.length + 1).match(/^(\d+)\.(\d+)\.(\d+)/) || []).slice(1).map(Number)
+          const [x, y] = [v(a), v(b)]
+          for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) - (y[i] || 0)
+          return 0
+        }).pop()
+      : null
+    if (!vsix) {
+      console.error(`\nERRO: ${id} esta em embutidas-da-loja.txt mas nao ha .vsix dele em ${cache}.`)
+      console.error('Rode antes: node scripts/baixar_extensoes.mjs')
+      process.exit(1)
+    }
+    const temporaria = path.join(destino, '.abrindo-' + id)
+    // Sobra de uma corrida interrompida sai antes: o `tar` sobrescreve mas não apaga, e misturaria
+    // arquivos de duas versões (revisão). É material do build, refeito a cada corrida.
+    fs.rmSync(temporaria, { recursive: true, force: true })
+    fs.mkdirSync(temporaria, { recursive: true })
+    const r = process.platform === 'win32'
+      ? spawnSync(tar, ['-xf', path.join(cache, vsix), '-C', temporaria], { stdio: 'inherit' })
+      : spawnSync(tar, ['-q', path.join(cache, vsix), '-d', temporaria], { stdio: 'inherit' })
+    const conteudo = path.join(temporaria, 'extension')
+    if (r.error || r.status !== 0 || !fs.existsSync(path.join(conteudo, 'package.json'))) {
+      console.error(`\nERRO: nao consegui abrir ${vsix} (${r.error ? r.error.message : 'saiu ' + r.status}).`)
+      process.exit(1)
+    }
+    const alvo = path.join(destino, id)
+    // O clone guarda o que o build anterior embutiu: a versao velha sai inteira, senao arquivos que a
+    // versao nova apagou ficariam misturados com os dela. E material do build, refeito a cada corrida.
+    fs.rmSync(alvo, { recursive: true, force: true })
+    // `rename` falha com EPERM quando o antivírus segura um arquivo recém-extraído (comum no Windows):
+    // aí copia, em vez de abortar o build com a extensão pela metade.
+    try { fs.renameSync(conteudo, alvo) } catch { fs.cpSync(conteudo, alvo, { recursive: true }) }
+    fs.rmSync(temporaria, { recursive: true, force: true }) // so o que sobrou do zip aberto aqui mesmo
+    // ⚠️ DEPENDENCIA DECLARADA SEM `node_modules` DERRUBA O BUILD (25/09/2026: o V27-B2
+    // morreu no passo 6 com `npm list ... ELSPROBLEMS`, 71 "missing" do vscode-office). O empacotador
+    // do nucleo cobra cada `dependencies` do `package.json` em `node_modules`. Extensao da loja que o
+    // autor empacotou com bundler NAO TRAZ essa pasta — o vscode-office poe o que usa em
+    // `out/node_modules/*.js`, e o Node acha ali. Instalada pela loja, ela roda do mesmo jeito, sem
+    // nada disso. A lista e letra morta: sai da COPIA (o `.vsix` do cache nao muda).
+    const pacote = path.join(alvo, 'package.json')
+    if (!fs.existsSync(path.join(alvo, 'node_modules'))) {
+      const p = JSON.parse(fs.readFileSync(pacote, 'utf8'))
+      const quantas = Object.keys(p.dependencies || {}).length
+      if (quantas) {
+        delete p.dependencies
+        fs.writeFileSync(pacote, JSON.stringify(p, null, '\t') + '\n', 'utf8')
+        console.log(`  ${id}: ${quantas} dependencia(s) declarada(s) sem node_modules — tiradas da copia`)
+      }
+    }
+    console.log('  embutida da loja: ' + id + ' (' + vsix + ')')
+    feitas++
+  }
+  return feitas
+}
+n += extensoesDaLojaEmbutidas()
+
 console.log(n === 0 ? 'nenhuma extensao embutida (esperado na V0)' : `${n} extensao(oes) embutida(s)`)

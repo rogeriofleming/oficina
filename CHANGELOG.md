@@ -2,6 +2,47 @@
 
 Todas as mudanças que importam, versão a versão. Datas em dd/mm/aaaa.
 
+## [v27] — 25/09/2026 — **ver o que você está fazendo, e nunca conversar sem pasta**
+
+A primeira versão pública desde a v25: ela leva também tudo o que está na v26, logo abaixo.
+
+- **Conversa sem pasta não acontece mais sozinha.** Sem pasta aberta, a conversa do Claude roda na sua
+  pasta pessoal — e ali não valem o `CLAUDE.md`, as skills nem as regras do projeto. Agora a janela sem
+  pasta abre a sua **pasta de sempre** (configuração `oficina.pastaDeSempre`, que a reinstalação não
+  apaga) ou pergunta qual abrir; a conversa automática da abertura e o `Ctrl+T` não abrem conversa sem
+  pasta. Se mesmo assim houver uma, a barra de cima avisa: **`⚠ sem pasta`**.
+- **Ver a página e ver o código.** Todo `.html` aberto ganha o botão **Ver a página** (também no botão
+  direito do explorador), que abre o mesmo arquivo no navegador embutido, ao lado. Na aba da página,
+  **Ver o código** volta ao arquivo.
+  ⚠️ *Limite:* o **link** de um `.html` dentro da conversa continua abrindo o texto — quem decide isso é
+  a extensão oficial do Claude Code, que a OFICINA não alcança. E um link que não resolve continua sem
+  aviso pelo mesmo motivo; a causa mais comum (conversa sem pasta) fecha com o item acima.
+- **Celular e computador lado a lado.** Na vista Navegador e em todo `.html`: a mesma página em duas
+  abas, uma como notebook (1366 px) e outra como celular (393 px). Se um aparelho não puder ser
+  aplicado, a aba avisa em vez de fingir que está no tamanho dele.
+- **Leitores de PDF e de escritório dentro do instalador.** PDF, Word, Excel e PowerPoint abrem na
+  própria OFICINA (extensões `tomoki1207.pdf` e `cweijan.vscode-office`, da Open VSX, embutidas).
+  Markdown, CSV e SVG **continuam abrindo como texto** — o leitor de escritório se registra como padrão
+  deles, e a OFICINA devolve os três ao editor.
+  ⚠️ *Não medido:* a fidelidade de apresentações `.pptx` (fontes, animações) — é o formato mais provável
+  de decepcionar.
+- **Os limites de uso na barra de cima.** Os medidores de 5 horas e de 7 dias sobem para a barra de
+  título, depois dos ícones, quando cabem; a pesquisa sai do centro e fica mais curta para dar espaço.
+  Com a janela estreita (meia tela, por exemplo) eles voltam sozinhos para a linha de baixo — nunca
+  cortam nem empurram os botões da janela. Sem medidor para mostrar, a barra fica como era.
+  ⚠️ *Custo:* a barra de título também é a alça para arrastar a janela — cada pixel ocupado é alça a menos.
+- **O contador de tokens no formato do painel de tokens:** `nome  $1.24  69.6k/1.0M`. Com várias
+  conversas na janela, a que está em uso vem entre colchetes, as outras viram `+N`, e o total vem no
+  fim. Só contam as conversas **desta janela** — uma conversa do VS Code aberta na mesma pasta não
+  entra. `$?` quer dizer custo ainda desconhecido, e não zero.
+  O relógio do cache saiu da barra: o rodapé da conversa, ao lado do modelo, já o mostra.
+- **A primeira abertura instala o que falta.** O instalador leva a extensão da OFICINA; o Claude Code
+  (que é proprietário e não pode ir embutido) e as demais da lista são **baixados da loja** na primeira
+  abertura, o Claude Code primeiro. Sem internet, a OFICINA avisa e tenta de novo na próxima.
+  ⚠️ *Custo:* os editores dessas extensões entram como confiáveis no produto, para a instalação não
+  perguntar "você confia?" seis vezes — e por isso eles não perguntam também quando você instala à mão.
+  ⚠️ *Limite:* o botão **Tentar agora** instala, mas só a próxima abertura aplica os ajustes da conversa.
+
 ## [v26] — 24/09/2026 — **as conexões e a conta**
 
 Dois botões novos na barra de cima, que agora tem seis.

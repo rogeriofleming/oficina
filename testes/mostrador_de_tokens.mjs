@@ -32,7 +32,7 @@ function editorFalso() {
   return {
     chaves,
     commands: { executeCommand: (c, k, v) => { if (c === 'setContext') { chaves[k] = v } return Promise.resolve() } },
-    workspace: { workspaceFolders: undefined },
+    workspace: { workspaceFolders: [{ uri: { fsPath: 'd:/projeto' } }] },
   }
 }
 
@@ -44,7 +44,7 @@ const resumoDe = (contexto, tokens, custo) => ({
 function montar(cfg = {}) {
   const vs = editorFalso()
   const criados = []
-  const m = M.criarMostradorDeTokens(vs, {
+  const m = M.criarMostradorDeTokens(vs, { hostPid: null,
     agendar: () => 1, desagendar: () => { },
     pastaDoProjeto: cfg.pasta === undefined ? (() => 'd:/projeto') : cfg.pasta,
     acharSessao: cfg.acharSessao || (() => ({ id: 'aaaaaaaa-1111', nome: 'pasta-1f', nomeEscolhido: false })),
@@ -88,10 +88,11 @@ function montar(cfg = {}) {
   const texto = vs.chaves[M.CHAVE_DO_TEXTO] || ''
   const primeiraLinha = texto.split('\n')[0]
   checar('2. com conversa e arquivo, publica os números',
-    vs.chaves[M.CHAVE_DE_MOSTRAR] === true && /117k/.test(primeiraLinha) && /2,0M/.test(primeiraLinha),
+    vs.chaves[M.CHAVE_DE_MOSTRAR] === true && primeiraLinha === '$2.50  117k/2.0M',
     primeiraLinha)
   checar('3a. sem nome no arquivo da conversa, a barra mostra só os números',
-    !primeiraLinha.includes('pasta-1f') && /^[\d.,]/.test(primeiraLinha), primeiraLinha)
+    // V27: a linha começa pelo custo (`$`), como no painel — antes começava pelo contexto.
+    !primeiraLinha.includes('pasta-1f') && /^\$\d/.test(primeiraLinha), primeiraLinha)
   checar('7. a dica avisa que o custo é estimativa',
     /estimativa/i.test(texto), texto)
 }
@@ -104,7 +105,7 @@ function montar(cfg = {}) {
   m.tique()
   const primeiraLinha = (vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0]
   checar('3b. o nome que ELE deu à conversa vai para a barra, na frente dos números',
-    primeiraLinha.startsWith('Meu Projeto · '), primeiraLinha)
+    primeiraLinha.startsWith('Meu Projeto  $2.50  '), primeiraLinha)
 
 // ── 4 ──
 {
@@ -175,7 +176,7 @@ function montar(cfg = {}) {
 {
   let parou = false
   const vs = editorFalso()
-  const m = M.criarMostradorDeTokens(vs, {
+  const m = M.criarMostradorDeTokens(vs, { hostPid: null,
     agendar: () => 7, desagendar: id => { parou = id === 7 },
     pastaDoProjeto: () => 'd:/projeto',
     acharSessao: () => ({ id: 'aaaaaaaa-1111', nome: 'x', nomeEscolhido: false }),
@@ -237,7 +238,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
 
   if (transcrito) {
     const vs = editorFalso()
-    const m = M.criarMostradorDeTokens(vs, {
+    const m = M.criarMostradorDeTokens(vs, { hostPid: null,
       agendar: () => 1, desagendar: () => { },
       pastaDoProjeto: () => 'd:/qualquer',
       acharSessao: () => ({ id: sessaoReal, nome: 'x', nomeEscolhido: false }),
@@ -257,8 +258,11 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     const med = new T.MedidorDaConversa(transcrito.p)
     med.atualizar()
     const temCache = !!med.resumo().cache
-    checar('SEM DUBLÊ 3. o relógio do cache aparece na barra quando a conversa tem cache (t201)',
-      !temCache || /cache/.test(primeira),
+    // ⚠️ SUCESSOR (V27) de "o relógio do cache aparece na barra": ele mandou o relógio para o rodapé do
+    // chat, ao lado do modelo — onde a extensão oficial já o mostra. Na barra ele ficaria duplicado.
+    // O relógio continua na DICA (quem passa o mouse vê), e é isso que se cobra agora.
+    checar('SEM DUBLÊ 3. o relógio do cache NÃO fica na linha da barra (mora no rodapé do chat), só na dica',
+      !/cache \d+m|cache vencido/.test(primeira) && (!temCache || /cache/i.test(texto.split('\n').slice(1).join('\n'))),
       `resumo.cache=${temCache} | "${primeira}"`)
     checar('SEM DUBLÊ 3b. e o mostrador consome mesmo o relógio (não é texto solto)',
       /relogioCache/.test(fonte) && /estadoDoRelogio/.test(fonte),
@@ -274,7 +278,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     const vs = editorFalso()
     let existe = false
     let criados = 0
-    const m = M.criarMostradorDeTokens(vs, {
+    const m = M.criarMostradorDeTokens(vs, { hostPid: null,
       agendar: () => 1, desagendar: () => { },
       pastaDoProjeto: () => 'd:/qualquer',
       acharSessao: () => ({ id: 'aaaaaaaa-1111', nome: 'x', nomeEscolhido: false }),
@@ -298,7 +302,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
   {
     const vs = editorFalso()
     let titulo = 'Antigo'
-    const m = M.criarMostradorDeTokens(vs, {
+    const m = M.criarMostradorDeTokens(vs, { hostPid: null,
       agendar: () => 1, desagendar: () => { },
       pastaDoProjeto: () => 'd:/qualquer',
       acharSessao: () => ({ id: 'bbbbbbbb-2222' }),
@@ -310,9 +314,178 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     titulo = 'Novo Nome'
     m.tique()
     checar('SEM DUBLÊ 5. renomear a conversa muda o nome na barra, sem trocar de id',
-      String(vs.chaves[M.CHAVE_DO_TEXTO] || '').startsWith('Novo Nome · '),
+      String(vs.chaves[M.CHAVE_DO_TEXTO] || '').startsWith('Novo Nome  '),
       String(vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0])
   }
+}
+
+// ── 9 ── sem pasta aberta, procura na pasta PESSOAL (onde a extensão oficial abre a conversa)
+{
+  /*
+    ⚠️ Pago em 25/09/2026: a OFICINA sem pasta aberta, conversa "Catálogo de skills" trabalhando
+    com o `cwd` igual à pasta pessoal, e a barra marcando `– · 0`. A extensão oficial usa
+    `workspaceFolders?.[0] ?? os.homedir()`; o mostrador tem de procurar no mesmo lugar.
+    Este bloco NÃO injeta `pastaDoProjeto` — é o padrão de verdade que está sendo cobrado.
+  */
+  const os = requerer('os')
+  const pedidas = []
+  const montarPadrao = pastas => {
+    const vs = editorFalso()
+    vs.workspace.workspaceFolders = pastas
+    const m = M.criarMostradorDeTokens(vs, { hostPid: null,
+      agendar: () => 1, desagendar: () => { },
+      acharSessao: p => { pedidas.push(p); return { id: 'cccccccc-3333' } },
+      acharTranscrito: () => 'd:/c.jsonl',
+      lerTitulo: () => null,
+      criarMedidor: () => ({ atualizar() { }, resumo: () => resumoDe(69600, 1000000, 1.24) }),
+    })
+    m.tique()
+    return vs
+  }
+  const vs = montarPadrao(undefined)
+  checar('9a. sem pasta aberta, a conversa e procurada na pasta pessoal',
+    pedidas[0] === os.homedir(), JSON.stringify(pedidas))
+  // ⚠️ SUCESSOR (V27) de "9b. e a barra mostra os numeros": mostrar SÓ os números nesse estado fazia a
+  // barra parecer saudável numa conversa sem as regras do projeto. Os números continuam; o aviso vem na frente.
+  checar('9b. sem pasta e com conversa: numeros E o aviso `⚠ sem pasta` na frente',
+    String(vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0] === `${M.AVISO_SEM_PASTA}  $1.24  69.6k/1.0M`,
+    String(vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0])
+  // A frase não promete demais (revisão, 25/09): o que fica de fora é o que mora DENTRO da pasta do
+  // projeto; o que é pessoal continua valendo — e sem o jargão "travas".
+  checar('9b-bis. e a dica diz o que fica de fora (o que mora na pasta do projeto), o que continua, e o que fazer',
+    /CLAUDE\.md/.test(vs.chaves[M.CHAVE_DO_TEXTO]) && /pessoais, continuam/.test(vs.chaves[M.CHAVE_DO_TEXTO]) &&
+    /Abrir Pasta/.test(vs.chaves[M.CHAVE_DO_TEXTO]) && !/travas/.test(vs.chaves[M.CHAVE_DO_TEXTO]))
+  const vsComPasta = montarPadrao([{ uri: { fsPath: 'd:/aberta' } }])
+  checar('9c. com pasta aberta, continua sendo a pasta aberta', pedidas[1] === 'd:/aberta', JSON.stringify(pedidas))
+  checar('9d. com pasta aberta, nenhum aviso', !String(vsComPasta.chaves[M.CHAVE_DO_TEXTO]).includes(M.AVISO_SEM_PASTA))
+}
+
+// ── 10 ── o formato do PAINEL de tokens (V27): "eu queria o msm"
+{
+  /*
+    Os valores esperados saíram do painel flutuante de tokens, e não daqui:
+    o print dele em 25/09/2026 mostrava `$1.24  69.6k/1.0M` para 69,6 mil de contexto e 1,0 milhão
+    processado — é o caso 10a.
+  */
+  checar('10a. o item do painel: `nome  $1.24  69.6k/1.0M`',
+    M.itemDoPainel('Catálogo skills', resumoDe(69600, 1000000, 1.24)) === 'Catálogo skills  $1.24  69.6k/1.0M',
+    M.itemDoPainel('Catálogo skills', resumoDe(69600, 1000000, 1.24)))
+  checar('10b. tokens como o painel: 195k sem casa, 69.6k com uma, 13.3M',
+    M.tokens(194810) === '195k' && M.tokens(69600) === '69.6k' && M.tokens(13342664) === '13.3M',
+    [M.tokens(194810), M.tokens(69600), M.tokens(13342664)].join(' '))
+  checar('10c. nome comprido corta na palavra, como o painel',
+    M.nomeCurto('Catálogo de skills com auditoria de uso') === 'Catálogo skills…',
+    M.nomeCurto('Catálogo de skills com auditoria de uso'))
+  checar('10d. preço faltando continua marcado (`+`): número incompleto não passa por inteiro',
+    M.itemDoPainel(null, { ...resumoDe(1000, 2000, 1), faltouPreco: true }) === '$1.00+  1.0k/2.0k',
+    M.itemDoPainel(null, { ...resumoDe(1000, 2000, 1), faltouPreco: true }))
+}
+
+// ── 11 ── as conversas DESTA JANELA, pelo processo pai (V27)
+{
+  const S = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'sessaoAtiva.js'))
+  const reg = (pid, id, extra = {}) => ({ pid, sessionId: id, entrypoint: 'claude-vscode', cwd: 'd:/x', status: 'idle', updatedAt: 1, ...extra })
+  const sessoes = [reg(10, 'a-oficina', { status: 'busy' }), reg(11, 'b-oficina'), reg(20, 'c-vscode'), reg(30, 'd-sdk', { entrypoint: 'sdk-ts' })]
+  const pais = { 10: 500, 11: 500, 20: 700, 30: 500 }
+  const r = S.conversasDaJanela(500, s => pais[s.pid], { sessoes, vivo: () => true, escritaEm: () => null })
+  checar('11a. so as filhas do host desta janela; a do VS Code na mesma pasta fica de fora',
+    r && r.conversas.map(c => c.id).join() === 'a-oficina,b-oficina', JSON.stringify(r))
+  checar('11b. a que esta trabalhando e a em uso', r && r.emUso === 'a-oficina', JSON.stringify(r))
+  checar('11c. pai ainda nao conhecido de ninguem: devolve null (cai no criterio da pasta, nao em lista vazia)',
+    S.conversasDaJanela(500, () => undefined, { sessoes, vivo: () => true }) === null)
+
+  // O mostrador inteiro, com duas conversas na janela
+  const vs = editorFalso()
+  const m = M.criarMostradorDeTokens(vs, {
+    agendar: () => 1, desagendar: () => { }, hostPid: 500,
+    pais: { atualizar() { }, paiDe: s => pais[s.pid] },
+    lerSessoes: () => sessoes,
+    listarDaJanela: (host, paiDe, ss) => S.conversasDaJanela(host, paiDe, { sessoes: ss, vivo: () => true, escritaEm: () => null }),
+    acharTranscrito: id => `d:/c/${id}.jsonl`,
+    lerTitulo: t => (t.includes('a-oficina') ? 'Catálogo skills' : 'Outra'),
+    criarMedidor: t => ({ atualizar() { }, resumo: () => (t.includes('a-oficina') ? resumoDe(69600, 1000000, 1.24) : resumoDe(30400, 500000, 0.76)) }),
+  })
+  m.tique()
+  const texto = String(vs.chaves[M.CHAVE_DO_TEXTO] || '')
+  checar('11d. varias conversas: a em uso entre colchetes, `+N` e o total, como o painel',
+    texto.split('\n')[0] === '[Catálogo skills  $1.24  69.6k/1.0M]  +1  │  $2.00  100k/1.5M', texto.split('\n')[0])
+  checar('11e. e a dica lista cada conversa, marcando a em uso',
+    /▸ Catálogo skills: \$1\.24/.test(texto) && /  Outra: \$0\.76/.test(texto), texto)
+}
+
+// ── 13 ── achados da revisao de honestidade da tela (25/09/2026)
+{
+  const S = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'sessaoAtiva.js'))
+  const reg = (pid, id, extra = {}) => ({ pid, sessionId: id, entrypoint: 'claude-vscode', cwd: 'd:/x', status: 'idle', updatedAt: 1, ...extra })
+  const montarJanela = ({ sessoes, transcritos, resumos, falha = () => false }) => {
+    const vs = editorFalso()
+    const m = M.criarMostradorDeTokens(vs, {
+      agendar: () => 1, desagendar: () => { }, hostPid: 500,
+      pais: { atualizar() { }, paiDe: () => 500 },
+      lerSessoes: () => sessoes,
+      listarDaJanela: (host, paiDe, ss) => S.conversasDaJanela(host, paiDe, { sessoes: ss, vivo: () => true, escritaEm: () => null }),
+      acharTranscrito: id => transcritos[id] || null,
+      lerTitulo: t => (t.includes('velha') ? 'Velha' : 'Nova'),
+      criarMedidor: t => ({ atualizar() { if (falha(t)) throw new Error('x') }, resumo: () => resumos[t] }),
+    })
+    m.tique()
+    return String(vs.chaves[M.CHAVE_DO_TEXTO] || '')
+  }
+  // 13a — a conversa NOVA em uso (sem arquivo ainda) ao lado de uma de $30: nada de "nenhuma conversa"
+  const t = montarJanela({
+    sessoes: [reg(1, 'velha'), reg(2, 'nova', { status: 'busy' })],
+    transcritos: { velha: 'd:/velha.jsonl' },
+    resumos: { 'd:/velha.jsonl': resumoDe(100000, 5000000, 30) },
+  })
+  checar('13a. conversa nova ao lado de uma medida: a barra NAO diz "nenhuma conversa" e mostra a soma',
+    t.split('\n')[0] === '[conversa nova  –]  +1  │  $30.00  100k/5.0M' && !/nenhuma conversa/.test(t), t.split('\n')[0])
+  // 13b — conversa registrada sem arquivo, sozinha: estado vazio, mas a dica NAO diz "nenhuma conversa"
+  const t2 = montarJanela({ sessoes: [reg(2, 'nova')], transcritos: {}, resumos: {} })
+  checar('13b. conversa que acabou de nascer: `– · 0`, e a dica diz que ela comecou (nao "nenhuma conversa")',
+    t2.startsWith(M.SEM_CONVERSA) && /começou/.test(t2) && !/nenhuma conversa/.test(t2), t2)
+  // 13c — sem preco conhecido: `$?`, nunca custo sumido
+  checar('13c. sem preco nenhum conhecido, o custo vira `$?` (nao some)',
+    M.itemDoPainel(null, { contextoAgora: 1000, tokens: 2000, custoUsd: null }) === '$?  1.0k/2.0k')
+  // 13d — o total marca o que nao soma
+  const t3 = montarJanela({
+    sessoes: [reg(1, 'velha', { status: 'busy' }), reg(2, 'nova')],
+    transcritos: { velha: 'd:/velha.jsonl', nova: 'd:/nova.jsonl' },
+    resumos: { 'd:/velha.jsonl': resumoDe(100000, 5000000, 30), 'd:/nova.jsonl': resumoDe(1, 1, 1) },
+    falha: tr => tr.includes('nova'),
+  })
+  checar('13d. uma conversa falhou: o total leva `?` (a soma esta incompleta)', /│ {2}\$30\.00\? /.test(t3.split('\n')[0]), t3.split('\n')[0])
+}
+
+// ── 12 ── a consulta dos pais nao grava "sem pai" por causa de uma falha
+{
+  const P = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'paisDosProcessos.js'))
+  let respostas = [null, new Map([[10, { pai: 500, inicio: '134348326646694120' }]])]
+  let relogio = 0
+  const pp = P.criarPaisDosProcessos({ consultar: () => Promise.resolve(respostas.shift()), agora: () => relogio })
+  const s = { pid: 10, procStart: '134348326646694129' }
+  await pp.atualizar([s])
+  checar('12a. consulta que falhou nao grava nada', pp.paiDe(s) === undefined && pp.tamanho === 0)
+  await pp.atualizar([s])
+  checar('12a-bis. e depois de falhar ESPERA o recuo (nao dispara um PowerShell a cada 3 s)', pp.paiDe(s) === undefined && respostas.length === 1)
+  relogio += P.RECUO_MS + 1
+  await pp.atualizar([s])
+  checar('12b. passado o recuo, a seguinte grava o pai (horas batendo ate o microssegundo)', pp.paiDe(s) === 500)
+  checar('12c. PID reaproveitado (outro procStart) nao herda o pai do antigo', pp.paiDe({ pid: 10, procStart: '2' }) === undefined)
+  const semShell = await P.consultarPais([10], { executar: (c, a, o, cb) => cb(new Error('x')) })
+  checar('12d. erro do sistema devolve null (nao sei), nao mapa vazio (ninguem existe)', semShell === null)
+  let comando = ''
+  await P.consultarPais([10, 'x; rm', -1, 2.5, 11, 1e21, 4294967296], { plataforma: 'win32', executar: (c, a, o, cb) => { comando = a.join(' '); cb(null, '') } })
+  checar('12e. so PID inteiro de 1 a 2^32-1 entra no comando (1e21 e 2^32 derrubavam a consulta inteira)',
+    comando.includes('ProcessId=10 OR ProcessId=11') && !/rm|-1|2\.5|e\+21|4294967296/.test(comando), comando)
+  // PID reaproveitado de VERDADE: o sistema responde, mas o processo nasceu em outra hora
+  const outro = P.criarPaisDosProcessos({ consultar: () => Promise.resolve(new Map([[20, { pai: 500, inicio: '134348322108105552' }]])) })
+  const velho = { pid: 20, procStart: '134342384786371546' } // registro de dias antes
+  await outro.atualizar([velho])
+  checar('12f. registro velho cujo PID hoje e de OUTRO processo (hora de criacao diferente): sem pai', outro.paiDe(velho) === null)
+  checar('12g. horas iguais ate 1 ms contam como o mesmo processo', P.mesmoProcesso('134348326646694129', '134348326646694120') && !P.mesmoProcesso('134348326646694129', '134348326646794129'))
+  const ext = fs.readFileSync(path.join(REPO, 'extensoes', 'oficina-claude', 'paisDosProcessos.js'), 'utf8')
+  checar('12h. o PowerShell vem por caminho absoluto, com as duas barras (sem virar "C:Windows")',
+    ext.includes("'C:\\\\Windows', 'System32', 'WindowsPowerShell'"), 'caminho do powershell')
 }
 
 const falhas = resultados.filter(r => !r.ok)

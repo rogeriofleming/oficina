@@ -36,8 +36,7 @@ import { carregarElectron, acharExe, abrirOficina, esconderJanela, fecharApp, ab
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const requerer = createRequire(import.meta.url)
 const L = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'limite.js'))
-// V20: quem mora na barra de cima agora e o mostrador de TOKENS (t196).
-const T = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'tokens.js'))
+// V20: quem mora na barra de cima agora e o mostrador de TOKENS (t196). O texto medido sai dele (`MT`, abaixo).
 
 const res = []
 const checar = (criterio, ok, detalhe = '') => {
@@ -75,25 +74,30 @@ if (!exe || !fs.existsSync(exe)) { console.log('nao achei o executavel'); proces
   importam: **cabe** na barra sem empurrar nada, e **dá para ler** nos dois temas. O que mudou é o
   texto medido — e ele continua saindo do motor de verdade, nunca escrito à mão.
 */
+/*
+  ⚠️ V27: O TEXTO VEM DO FORMATO DO PAINEL (`mostradorDeTokens.itemDoPainel`), e o pior caso CRESCEU.
+  Com várias conversas na janela a linha ganha colchetes, `+N`, o total e, sem pasta, o aviso na
+  frente. É por isso que ele tem de ser medido de novo aqui, e não herdado da V20.
+*/
+const MT = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'mostradorDeTokens.js'))
 function textoMaisLargo() {
-  // O pior caso do mostrador de tokens: nome escolhido longo, números grandes, custo com as duas
-  // marcas (estimativa e preço faltando) e o relógio do cache cheio.
-  const numeros = T.textoDaBarra({
+  // O pior caso: sem pasta, nome longo, várias conversas, números grandes e preço faltando (o
+  // relógio do cache saiu da linha na V27: ele mora no rodapé do chat oficial).
+  const item = MT.itemDoPainel('Uma conversa com nome comprido demais', {
     contextoAgora: 999000, tokens: 999000000, custoUsd: 9999.99, faltouPreco: true,
-    modelos: [], respostas: 1,
   })
-  return `Uma conversa com nome comprido · ${numeros} · cache 60m?`
+  return `${MT.AVISO_SEM_PASTA}  [${item}]  +9  │  ${MT.dinheiro(99999.99)}  ${MT.tokens(9999000)}/${MT.tokens(9999000000)}`
 }
 const O_MAIS_LARGO = textoMaisLargo()
-/** O texto de TODO DIA: sem nome escolhido, números comuns — é este que fica na tela quase sempre. */
-const O_DE_TODO_DIA = T.textoDaBarra({
-  contextoAgora: 117000, tokens: 2000000, custoUsd: 2.5, faltouPreco: false, modelos: [], respostas: 1,
-}) + ' · cache 42m'
-checar('o texto mais largo possível sai do próprio motor de tokens (nada escrito à mão)',
-  /999k/.test(String(O_MAIS_LARGO)) && /cache 60m/.test(String(O_MAIS_LARGO)) &&
-  String(O_MAIS_LARGO).includes('·'), String(O_MAIS_LARGO))
-checar('o texto de todo dia também sai do motor',
-  O_DE_TODO_DIA === '117k · 2,0M · US$ 2,50* · cache 42m', String(O_DE_TODO_DIA))
+/** O texto de TODO DIA: uma conversa com nome, números comuns — é este que fica na tela quase sempre. */
+const O_DE_TODO_DIA = MT.itemDoPainel('Catálogo skills', {
+  contextoAgora: 117000, tokens: 2000000, custoUsd: 2.5, faltouPreco: false,
+})
+checar('o texto mais largo possível sai do próprio mostrador (nada escrito à mão)',
+  /999k/.test(String(O_MAIS_LARGO)) &&
+  String(O_MAIS_LARGO).includes(MT.AVISO_SEM_PASTA), String(O_MAIS_LARGO))
+checar('o texto de todo dia também sai do mostrador, no formato do painel',
+  O_DE_TODO_DIA === 'Catálogo skills  $2.50  117k/2.0M', String(O_DE_TODO_DIA))
 
 const contraste = (a, b) => {
   const lum = c => {
@@ -363,7 +367,10 @@ for (const [nome, r] of [['escuro', escuro], ['claro', claro]]) {
   checar(`[${nome}] a barra de cima não passa a rolar com o mostrador dentro`,
     m.comSonda.rolagem <= m.comSonda.barra, `rolagem ${m.comSonda.rolagem} de ${m.comSonda.barra}`)
   checar(`[${nome}] a sonda ocupa o que um texto desse tamanho ocupa (e não zero)`,
-    m.larguraDaSonda > 100 && m.larguraDaSonda < 400, `${m.larguraDaSonda} px`)
+    // V27: o pior caso do formato do painel passou do teto do item (30vw, patch 0023) — a sonda
+    // agora bate NO teto, e é o teto que ela tem de respeitar (o `< 400` fixo era de antes).
+    m.larguraDaSonda > 100 && m.larguraDaSonda <= Math.round(m.larguraDaJanela * 0.3) + 2,
+    `${m.larguraDaSonda} px (teto ${Math.round(m.larguraDaJanela * 0.3)} px)`)
   checar(`⛔ [${nome}] a sonda OCUPA ESPACO DE VERDADE: a barra de ações cresce o tamanho dela`,
     m.ondeFicou.cresceu >= m.larguraDaSonda && m.ondeFicou.cresceu - m.larguraDaSonda <= 8,
     `a barra de ações cresceu ${m.ondeFicou.cresceu} px para uma sonda de ${m.larguraDaSonda} px (a diferença é a margem entre itens)`)
@@ -407,7 +414,10 @@ for (const [nome, r] of [['escuro', escuro], ['claro', claro]]) {
       // ⚠️ `m.itens === 1`, e não 4: o `t188` tirou os três botões (Arquivos, Conversa e Layout) da
       // barra de cima, e o mostrador ficou sozinho. A conta antiga é de antes da ordem dele.
       ? (m.real.quantos === 1 && m.itens === 1 &&
-        /^(.+ · )?[\d.,]+[kKmM]? · [\d.,]+[kKmM]?( · US\$ [\d.,]+\+?\*)?( · cache .+)?$/.test(m.real.rotulos[0]))
+        // V27: a forma do painel de tokens (`nome  $1.24  69.6k/1.0M`, com `[...] +N │ total` quando há
+        // várias), com o aviso de pasta na frente quando for o caso — ou um dos dois estados sem número.
+        // `$?` é custo desconhecido (`custoDe`, modelo ainda sem preço) — estado do motor, não defeito.
+        /^(⚠ sem pasta {2})?(– · [0?]|\[?(.+ {2})?\$(?:[\d.]+\+?|\?) {2}[\d.]+[kM]\/[\d.]+[kM]\]?( {2}\+\d+ {2}│ {2}\$(?:[\d.]+\+?|\?) {2}[\d.]+[kM]\/[\d.]+[kM])?)$/.test(m.real.rotulos[0]))
       : (m.itens >= 3 && m.rotulos.length === 0),
     temPatch
       ? `${m.itens} itens na barra, ${m.real.quantos} com texto: "${m.real.rotulos.join(' | ')}" (${m.real.largura} px)`

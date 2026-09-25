@@ -17,5 +17,8 @@ A conversa continua sendo o centro da tela.
     Ctrl  Shift  G     Git
     Ctrl  P            vai a um arquivo
 
-O navegador (celular, tablet, monitor)
+Num arquivo .html aberto, o alto da aba traz
+"Ver a página" e "Celular e computador lado a lado";
+na página, "Ver o código" volta ao arquivo.
+O navegador completo (celular, tablet, monitor)
 abre pela paleta: Ctrl Shift P, "Navegador".

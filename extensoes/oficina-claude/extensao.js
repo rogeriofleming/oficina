@@ -51,6 +51,9 @@ const { criarMostrador: criarMostradorDoLimite } = require('./mostradorDoLimite'
 /** V20 — a faixa de medidores (t199) e o mostrador de tokens da barra de cima (t196). */
 const { criarFaixa: criarFaixaDoLimite } = require('./faixaDoLimite')
 const { criarMostradorDeTokens } = require('./mostradorDeTokens')
+const pastaDeSempre = require('./pastaDeSempre')
+const { criarVerHtml } = require('./verHtml')
+const extensoesQueFaltam = require('./extensoesQueFaltam')
 const { criarTelaDoConsumo } = require('./telaDoConsumo')
 const ajustesDaOficial = require('./ajustesDaConversaOficial')
 /** V20 — o padrão de fábrica que a conversa oficial só lê da camada de quem usa (o bypass). */
@@ -229,6 +232,16 @@ function registrarBoasVindas(context) {
 // a seleção para a caixa como referência. Quem seleciona um trecho e aperta Ctrl+T quer falar
 // daquele trecho. Com nada selecionado, não insere nada.
 async function abrirConversaOuExplicar() {
+  // ⚠️ V27: a porta também não abre conversa SEM PASTA — pelo mesmo motivo da abertura (ver
+  // `pastaDeSempre.js`): ali a conversa nasce sem CLAUDE.md, sem skills do projeto e sem travas.
+  // Abre a pasta de sempre, ou pergunta qual. A conversa pelo ícone da extensão oficial não passa por
+  // aqui; para ela, quem avisa é a barra (`⚠ sem pasta`, mostradorDeTokens.js).
+  const pastas = vscode.workspace.workspaceFolders
+  if (!(pastas && pastas.length)) {
+    anotar('porta.semPasta')
+    await pastaDeSempre.aoAbrir(vscode, { anotar, perguntar: true })
+    return
+  }
   for (const comando of ['claude-vscode.focus', 'claude-vscode.editor.openLast']) {
     if (await tentar(comando)) {
       anotar('porta.conversaOficial', { comando })
@@ -1745,6 +1758,7 @@ function registrarConta(context) {
  */
 function registrarNavegador(context) {
   const navegador = criarNavegador(vscode, { anotar })
+  const verHtml = criarVerHtml(vscode, { anotar })
   const vista = vscode.window.createTreeView('oficina.navegador', { treeDataProvider: navegador.provedor })
   // O custo dito na tela, e não só no documento: "iOS" aqui não é o Safari.
   vista.message = AVISO_DO_NAVEGADOR
@@ -1756,6 +1770,10 @@ function registrarNavegador(context) {
     vscode.commands.registerCommand('oficina.navegador.abrirHtml', () => navegador.abrirHtmlDoEditor()),
     vscode.commands.registerCommand('oficina.navegador.emular', id => navegador.emular(id)),
     vscode.commands.registerCommand('oficina.navegador.girar', () => navegador.girar()),
+    // V27: as duas opções de um `.html` — ver a página e ver o código (verHtml.js).
+    vscode.commands.registerCommand('oficina.navegador.ladoALado', () => navegador.ladoALado()),
+    vscode.commands.registerCommand('oficina.html.verPagina', uri => verHtml.verPagina(uri)),
+    vscode.commands.registerCommand('oficina.html.verCodigo', uri => verHtml.verCodigo(uri)),
     { dispose: () => navegador.descartar() })
   if (typeof w.onDidCloseBrowserTab === 'function') context.subscriptions.push(w.onDidCloseBrowserTab(aba => navegador.esquecerAba(aba)))
 }
@@ -2016,6 +2034,21 @@ async function activate(context) {
   await marcarEdicaoDaEquipe(context)
 
   /*
+    ⚠️ V27: A PRIMEIRA ABERTURA INSTALA O QUE FALTA — antes da abertura da conversa, de propósito.
+    Sem a extensão do Claude Code, a abertura cai no painel próprio, e a OFICINA de quem instalou fica
+    "tão diferente" da de quem desenvolve (o caso de um membro da equipe, 25/09/2026). Ver `extensoesQueFaltam.js`.
+    Os ajustes na conversa oficial rodaram lá em cima, quando ela ainda não existia: refaz agora.
+  */
+  // ⚠️ Nada aqui pode derrubar a ativação: uma falha ao instalar deixa a OFICINA como estava, e anota.
+  let instalacao = { instaladas: [], falharam: [] }
+  try { instalacao = await extensoesQueFaltam.instalarOQueFalta(vscode, { anotar, estado: context.globalState }) }
+  catch (e) { anotar('extensoes.erro', { mensagem: String((e && e.message) || e) }) }
+  if (instalacao.instaladas.includes(extensoesQueFaltam.A_CONVERSA)) {
+    aplicarAjustesDaConversaOficial()
+    propagarPadroesDaConversaOficial()
+  }
+
+  /*
     ⚠️ A BARRA DA DIREITA FECHA NA ABERTURA, SEMPRE — e esta é a única coisa que se faz antes da
     guarda abaixo (t204, 24/09/2026).
 
@@ -2035,6 +2068,14 @@ async function activate(context) {
   */
   await tentar('workbench.action.closeAuxiliaryBar')
   anotar('abertura.barraDaDireitaFechada')
+
+  /*
+    ⚠️ V27: SEM PASTA, NADA DE CONVERSA AUTOMÁTICA — e isto vem ANTES da abertura abaixo, de propósito.
+    A abertura abre uma conversa sozinha quando a tela está vazia; numa janela sem pasta essa conversa
+    nascia na pasta pessoal, sem CLAUDE.md, sem skills do projeto e sem travas (medido em 25/09/2026).
+    `pastaDeSempre.js` abre a pasta de sempre ou pergunta qual — ver o cabeçalho de lá.
+  */
+  if (await pastaDeSempre.aoAbrir(vscode, { anotar, estado: contextoDaExtensao && contextoDaExtensao.globalState })) return
 
   // ⚠️ Só arruma a tela quando ela está VAZIA.
   //

@@ -56,6 +56,12 @@ chamavam "a conversa da OFICINA".
 e a porta cai nele quando a extensão oficial não responde (ausente num build de teste, desativada,
 ou quebrada no meio de um trabalho). Ninguém fica sem conversa por causa de uma loja.
 
+**Desde a V27, o Ctrl+T não abre conversa numa janela SEM PASTA.** Sem pasta, a conversa rodaria na
+pasta pessoal, e as instruções, skills e regras que moram dentro da pasta do projeto não seriam
+carregadas. Nesse caso o Ctrl+T pergunta qual pasta abrir (e oferece a "pasta de sempre", se houver).
+Com pasta aberta, nada muda. E a primeira abertura do programa instala sozinha o Claude Code, se ele
+faltar — é por isso que o painel próprio só aparece quando a instalação não deu certo.
+
 **⚠️ A porta usa `claude-vscode.focus`, e a escolha do comando não é detalhe.** Os títulos dos comandos
 dela enganam, e os três foram lidos no corpo das funções, no pacote 2.1.278:
 

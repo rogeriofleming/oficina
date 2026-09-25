@@ -1,0 +1,16 @@
+diff --git a/build/lib/extensions.ts b/build/lib/extensions.ts
+index 6a54fbe9d93..4cee757e619 100644
+--- a/build/lib/extensions.ts
++++ b/build/lib/extensions.ts
+@@ -137,7 +137,10 @@ function fromLocalNormal(extensionPath: string): Stream {
+ 					path: filePath,
+ 					stat: fs.statSync(filePath),
+ 					base: extensionPath,
+-					contents: fs.createReadStream(filePath)
++					// OFICINA viabilidade 0007: read now, not as a stream. `createReadStream` opens its
++					// file as soon as it is created, so an extension with ~1750 files (a store extension
++					// with an icon theme) opened them all at once and the build died with EMFILE.
++					contents: fs.readFileSync(filePath)
+ 				}));
+ 
+ 			es.readArray(files).pipe(result);

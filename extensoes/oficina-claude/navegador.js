@@ -293,6 +293,46 @@ function criarNavegador(vscode, opcoes = {}) {
     }
   }
 
+  /**
+   * V27 — CELULAR E COMPUTADOR LADO A LADO (item 1c dos pedidos de 25/09).
+   *
+   * Pedido dele: *"visualizador nativo que imite o mobile pra ver como ta ficando um codigo pra versão
+   * desktop e mobile"*. Até aqui era UMA aba com UM aparelho: para comparar, trocava-se o aparelho e
+   * a página de antes sumia. Aqui são duas abas da mesma página, cada uma com a SUA conexão e o SEU
+   * aparelho — a conexão já era por aba (`conexoes`), então nada no resto da vista muda.
+   *
+   * O que abre: o `.html` do editor, se houver; senão o último endereço; senão pergunta. Os aparelhos
+   * padrão são os de uso mais comum aqui (iPhone 15 e Notebook); outros continuam a um clique na vista.
+   */
+  async function ladoALado({ celular = 'iphone-15', computador = 'desktop-1366' } = {}) {
+    if (!apiDisponivel()) { explicarSemApi(); return null }
+    const ed = vscode.window.activeTextEditor
+    const doc = ed && ed.document
+    const html = doc && doc.uri && doc.uri.scheme === 'file' && /\.html?$/i.test(doc.uri.fsPath || '') ? doc.uri.toString() : null
+    const url = html || ultimoEndereco || normalizarEndereco(await vscode.window.showInputBox({
+      title: 'Celular e computador lado a lado',
+      prompt: 'Endereço da página (ex.: localhost:5173 ou exemplo.com.br)',
+      value: 'http://localhost:',
+    }))
+    if (!url) return null
+    const [aCel, aPc] = [lista.find(x => x.id === celular), lista.find(x => x.id === computador)]
+    if (!aCel || !aPc) return null
+    // O computador ao lado do editor, e o celular ao lado DELE: três colunas — código, computador, celular.
+    const abaPc = await vscode.window.openBrowserTab(url, { viewColumn: vscode.ViewColumn.Beside })
+    const abaCel = await vscode.window.openBrowserTab(url, { viewColumn: vscode.ViewColumn.Beside })
+    ultimoEndereco = url
+    ultimaAba = abaCel
+    const erros = []
+    for (const [aba, a] of [[abaPc, aPc], [abaCel, aCel]]) {
+      try { await (await conexaoDa(aba)).rodar(comandosDoAparelho(a, false)) }
+      catch (e) { erros.push(`${a.nome}: ${e && e.message}`) }
+    }
+    anotar('navegador.ladoALado', { celular, computador, erros: erros.length })
+    // Falha em aplicar um aparelho não fica calada: a aba estaria no tamanho do painel fingindo ser o aparelho.
+    if (erros.length) vscode.window.showErrorMessage('Não consegui aplicar o aparelho em: ' + erros.join(' · '))
+    return { abaPc, abaCel, erros }
+  }
+
   async function girar() {
     paisagem = !paisagem
     aoMudar.fire()
@@ -336,6 +376,7 @@ function criarNavegador(vscode, opcoes = {}) {
     const itens = [
       acao('endereco', 'Abrir endereço…', 'globe', 'oficina.navegador.abrirEndereco', 'Abre uma página no navegador integrado, ao lado do editor.'),
       acao('html', 'Abrir o HTML do editor', 'file-code', 'oficina.navegador.abrirHtml', 'Abre no navegador o arquivo .html que está aberto no editor.'),
+      acao('ladoALado', 'Celular e computador lado a lado', 'split-horizontal', 'oficina.navegador.ladoALado', 'Abre a mesma página duas vezes: uma como Notebook e outra como iPhone 15, lado a lado. O celular é imitação: tela, densidade e toque do iPhone, no motor do Chrome — não é o Safari.'),
       acao('janela', atual ? 'Tamanho do painel (sem aparelho)' : 'Tamanho do painel — em uso', atual ? 'screen-full' : 'check', 'oficina.navegador.emular', 'Volta a página ao tamanho do painel, com o agente do navegador de sempre.', [null]),
       acao('girar', paisagem ? 'Girar para retrato' : 'Girar para paisagem', 'sync', 'oficina.navegador.girar', 'Troca largura e altura de celulares e tablets.'),
     ]
@@ -367,7 +408,7 @@ function criarNavegador(vscode, opcoes = {}) {
   }
 
   return {
-    provedor, aparelhos: lista, emular, girar, abrirEndereco, abrirHtmlDoEditor, esquecerAba, descartar,
+    provedor, aparelhos: lista, emular, girar, abrirEndereco, abrirHtmlDoEditor, ladoALado, esquecerAba, descartar,
     get atual() { return atual }, get paisagem() { return paisagem },
   }
 }

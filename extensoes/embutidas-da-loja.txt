@@ -1,0 +1,14 @@
+# Extensoes da Open VSX que vao DENTRO do instalador (embutidas), e nao so para a maquina de desenvolvimento.
+# Uma por linha, no formato editor.nome. Cada uma tem de estar tambem em lista.txt: e de la que o
+# .vsix conferido vem (scripts/baixar_extensoes.mjs), e e ele que scripts/copiar_extensoes.mjs abre.
+#
+# V27: os leitores de documento. Sem eles, quem instala a OFICINA nao ve PDF, slide nem planilha —
+# so o codigo de dentro do arquivo. Custo: ~52 MB de extensao descompactada (44 + 8,4, medido na pasta
+# instalada do perfil); no instalador, que e comprimido, e menos — o tamanho final sai no build.
+#
+# ⚠️ O vscode-office se registra como editor PADRAO de .md, .csv e .svg. A OFICINA devolve esses tres
+# ao editor de texto (workbench.editorAssociations, em configurationDefaults da extensao da OFICINA):
+# o visual continua como opcao ("Reabrir com..."). Decisao do dono em 25/09/2026.
+
+tomoki1207.pdf
+cweijan.vscode-office

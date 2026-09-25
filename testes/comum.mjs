@@ -278,6 +278,9 @@ export function ambienteLimpo() {
   for (const chave of Object.keys(env)) {
     if (chave.startsWith('VSCODE_')) delete env[chave]
   }
+  // V27: a primeira abertura instala as extensões que faltam (`extensoesQueFaltam.js`). Os testes abrem
+  // com a pasta de extensões VAZIA de propósito — o padrão de fábrica — e cada abertura baixaria ~250 MB.
+  env.OFICINA_SEM_INSTALAR_EXTENSOES = '1'
   return env
 }
 

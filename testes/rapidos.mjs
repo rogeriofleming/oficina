@@ -76,6 +76,9 @@ const SUITES = [
   // O padrão de fábrica que a conversa oficial não enxerga (o bypass que lia "Auto" na tela).
   ['padrao_da_conversa_oficial.mjs', 'PADRAO_DA_OFICIAL'],
   ['sessao_ativa.mjs', 'SESSAO_ATIVA'],
+  ['pasta_de_sempre.mjs', 'PASTA_DE_SEMPRE'],
+  ['ver_html.mjs', 'VER_HTML'],
+  ['extensoes_que_faltam.mjs', 'EXTENSOES_QUE_FALTAM'],
   ['mostrador_de_tokens.mjs', 'MOSTRADOR_DE_TOKENS'],
   ['tela_do_consumo.mjs', 'TELA_DO_CONSUMO'],
   ['ajustes_da_conversa_oficial.mjs', 'AJUSTES_DA_OFICIAL'],
@@ -167,6 +170,7 @@ const SONDAS_FORA_DE_BATERIA = {
   // ou vermelho nelas. Ficaram apontadas como orfas desde que nasceram, e orfa que nao tem
   // conserto possivel so ensina a ignorar a lista.
   'sonda_folga_da_barra.mjs': 'sonda de controle: mede a folga da barra de cima ao vivo',
+  'sonda_limites_na_barra.mjs': 'sonda de medida (V27): cabem os medidores do limite na barra de cima, em tela cheia e meia tela',
   'sonda_skills_na_barra.mjs': 'sonda de controle: conta os icones da barra de cima',
   'sonda_viabilidade_truncar.mjs': 'sonda de viabilidade: testa estilos candidatos antes do patch',
   'sonda_dom_da_barra.mjs': 'sonda de leitura: imprime o DOM da barra de cima para o seletor sair de medicao',

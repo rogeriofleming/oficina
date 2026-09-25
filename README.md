@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/vers%C3%A3o-v26-EA792B?style=flat-square" alt="versão v26"></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/vers%C3%A3o-v27-EA792B?style=flat-square" alt="versão v27"></a>
   <img src="https://img.shields.io/badge/Windows-x64-6B7075?style=flat-square" alt="Windows x64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-6B7075?style=flat-square" alt="licença MIT"></a>
   <img src="https://img.shields.io/badge/telemetria-nenhuma-6B7075?style=flat-square" alt="sem telemetria">
@@ -54,6 +54,11 @@ Em construção, versão por versão. O que existe hoje está no [CHANGELOG.md](
 
 Baixe o `OficinaSetup.exe` na aba [Releases](../../releases) e abra. Ele instala sozinho,
 sem pedir pasta nem privilégio de administrador.
+
+**A primeira abertura precisa de internet.** O instalador leva o que pode ir embutido; o
+Claude Code (que é proprietário e não pode ser redistribuído) e as demais extensões da lista
+são baixados da Open VSX nessa hora, o Claude Code primeiro. Sem conexão, a OFICINA avisa e
+tenta de novo na próxima abertura.
 
 > **A tela azul "O Windows protegeu o computador" vai aparecer.** Clique em
 > **"Mais informações" → "Executar assim mesmo"**. Ela aparece porque este instalador não

@@ -117,3 +117,15 @@ if (aindaLa.length) {
 console.log(orfas.length === 0
   ? `  nenhuma extensao estranha no clone (${rastreadas.size} do upstream)`
   : `  ${orfas.length} removida(s); sobraram ${rastreadas.size} do upstream`)
+
+// ⚠️ SOBRA DA JANELA DE DESENVOLVIMENTO (25/09/2026). Rodar a OFICINA do fonte (`OFICINA_DEV=1`, as
+// sondas de tela) executa o Copilot DE DENTRO deste clone, e ele grava em tempo de execucao o marcador
+// `node_modules/@github/copilot/shims.txt`. No build, o `gulp.src` das dependencias lista o arquivo e,
+// minutos depois, o `postinstall` que o `.esbuild.mts` do Copilot roda no meio do caminho o apaga: o
+// build morre com `ENOENT: lstat ...shims.txt` (o V27-B2 morreu assim, depois de 5 minutos de gulp).
+// O marcador nao e do produto — o proprio `postinstall` o apaga de proposito. Sai AQUI, antes do gulp.
+const marcador = path.join(pastaExtensoes, 'copilot', 'node_modules', '@github', 'copilot', 'shims.txt')
+if (fs.existsSync(marcador)) {
+  fs.rmSync(marcador, { force: true })
+  console.log('  fora do clone: o shims.txt que a janela de desenvolvimento deixou no Copilot')
+}

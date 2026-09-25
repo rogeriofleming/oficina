@@ -38,6 +38,8 @@
   "hideBuiltinWalkthroughs": true,
   "hideActivityBarGlobalActions": true,
   "bannerGaugesContextKey": "oficina.faixa",
+  "titleBarGauges": true,
+  "trustedExtensionPublishers": ["anthropic", "ms-python", "detachhead", "ms-vscode", "github", "mechatroner"],
   "activityBarInTitleBar": true,
   "editorTitleActionsToHide": [
     "workbench.action.splitEditor",

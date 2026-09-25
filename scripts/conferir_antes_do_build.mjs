@@ -161,8 +161,15 @@ const checar = (nome, ok, detalhe = '') => {
         const iconSize = pegar(ts, /iconSize:\s*(\d+)/)
         if (iconSize) anotar('iconSize(ts)', iconSize)
 
-        // No CSS, so as regras da barra de icones da barra de titulo.
-        const trechoDaBarra = css.split('titlebar-activity-container').slice(1).join(' ')
+        // No CSS, so as regras da barra de icones da barra de titulo — escolhidas pelo SELETOR de cada
+        // regra. A primeira versao cortava o arquivo na primeira mencao a `titlebar-activity-container`
+        // e lia TUDO o que vinha depois: quando o patch 0028 acrescentou as regras da pesquisa e dos
+        // medidores no fim do arquivo, os 145, 81 e 34 deles entraram na conta e o criterio reprovou um
+        // icone que estava certo (25/09/2026: ts=20, css=20 — e mesmo assim vermelho).
+        const semComentarios = css.replace(/\/\*[\s\S]*?\*\//g, '')
+        const trechoDaBarra = [...semComentarios.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+          .filter(m => m[1].includes('titlebar-activity-container'))
+          .map(m => m[2]).join('\n')
         for (const m of trechoDaBarra.matchAll(/(?:width|font-size|background-size):\s*(\d+)px/g)) {
           // 3px e a folga lateral do item, nao o tamanho do icone.
           if (m[1] !== '3') numeros.add(`css=${m[1]}`)
