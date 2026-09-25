@@ -80,8 +80,9 @@ Spectre) — e então `scripts\construir.bat`.
 
 ## Licença
 
-MIT — veja [LICENSE](LICENSE). O núcleo do VS Code é MIT © Microsoft Corporation; as
-marcas "Visual Studio Code" e o ícone oficial **não** são MIT e não são usados aqui.
+MIT — veja [LICENSE](LICENSE) e os avisos de origem em [NOTICE.md](NOTICE.md). O núcleo do VS Code
+é MIT © Microsoft Corporation; as marcas "Visual Studio Code" e o ícone oficial **não** são MIT e
+não são usados aqui.
 
 ## Sem suporte
 
