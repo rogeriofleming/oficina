@@ -81,6 +81,13 @@ const SUITES = [
   ['ajustes_da_conversa_oficial.mjs', 'AJUSTES_DA_OFICIAL'],
   ['guarda_produto.mjs', 'GUARDA_PRODUTO'],
   ['temas.mjs', 'TEMAS'],
+  // ⚠️ AS QUATRO DA V26. Elas rodam SEM `--real`: a bateria não depende de haver uma conta logada
+  // nem de o CLI da instalação existir nesta máquina. O modo real (`node testes/mcps.mjs --real`)
+  // acrescenta um critério e é rodado à mão, quando se quer provar contra o Claude de verdade.
+  ['mcps.mjs', 'MCPS'],
+  ['tela_mcps.mjs', 'TELA_MCPS'],
+  ['conta.mjs', 'CONTA'],
+  ['tela_conta.mjs', 'TELA_CONTA'],
   ['vazamento_regras.mjs', null],
   ['vazamento_historico.mjs', null, p => p.novos === 0],
 ]
@@ -179,6 +186,27 @@ for (const f of fs.readdirSync(path.join(REPO, 'testes'))) {
 const orfasOk = orfas.length === 0
 if (!orfasOk) tudoVerde = false
 
+/*
+  ⛔ OS FONTES SÃO TEXTO — e este critério estava na bateria ERRADA.
+
+  Ele existe desde a V4, mas só dentro da `regressao.mjs`, que exige um build. A bateria rápida —
+  a que se roda dezenas de vezes por sessão — não o tinha. Em 24/09/2026 isso custou: escapes de
+  texto viraram BYTES de controle dentro de uma regex, tudo continuou verde aqui (e o conferidor
+  pré-build liberou o build), e quem denunciou foi um `grep` respondendo "Binary file … matches".
+
+  Um arquivo de código com byte de controle dentro funciona e vira **binário para o git**: sem
+  diff legível, sem revisão possível — num repositório público. A checagem custa milissegundos e o
+  lugar dela é aqui, no ciclo curto, ao lado da que confere se todo arquivo abre.
+*/
+const sujos = []
+for (const rel of arquivosDeCodigo) {
+  let bruto
+  try { bruto = fs.readFileSync(path.join(REPO, rel)) } catch { continue }
+  if (bruto.some(b => b < 9 || b === 11 || b === 12 || (b > 13 && b < 32) || b === 127)) sujos.push(rel)
+}
+const textoOk = sujos.length === 0
+if (!textoOk) tudoVerde = false
+
 for (const l of linhas) {
   const piso = l.piso === null ? '' : ` (piso ${l.piso})`
   const pul = l.pulados ? `  ⚠️ ${l.pulados} PULADO(S)` : ''
@@ -190,10 +218,13 @@ console.log(`  ${sintaxeOk ? 'OK  ' : 'FALHA'} todo arquivo de codigo abre    ${
 for (const p of naoAbrem) console.log('         ' + p)
 console.log(`  ${orfasOk ? 'OK  ' : 'FALHA'} toda suite esta em bateria`)
 for (const f of orfas) console.log(`         ORFA: ${f} — nao roda em bateria nenhuma (quebra-la nao deixa nada vermelho)`)
+console.log(`  ${textoOk ? 'OK  ' : 'FALHA'} todo fonte e TEXTO (sem byte de controle)   ${arquivosDeCodigo.length} arquivos`)
+for (const p of sujos) console.log(`         BINARIO PARA O GIT: ${p} — sem diff legivel, sem revisao possivel`)
 console.log(JSON.stringify({ passou: tudoVerde, suites: linhas.length + 3,
   falhas: linhas.filter(l => !l.ok).map(l => l.arquivo)
     .concat(vazamentoOk ? [] : ['varrer_vazamento.mjs'])
     .concat(sintaxeOk ? [] : ['sintaxe: ' + (naoAbrem.join(' | ') || 'o criterio nao mediu arquivo nenhum')])
-    .concat(orfasOk ? [] : ['suites orfas: ' + orfas.join(', ')]),
+    .concat(orfasOk ? [] : ['suites orfas: ' + orfas.join(', ')])
+    .concat(textoOk ? [] : ['fonte com byte de controle: ' + sujos.join(', ')]),
   pulados: linhas.reduce((n, l) => n + l.pulados, 0) }))
 process.exit(tudoVerde ? 0 : 1)

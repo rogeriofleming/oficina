@@ -2,6 +2,29 @@
 
 Todas as mudanças que importam, versão a versão. Datas em dd/mm/aaaa.
 
+## [v26] — 24/09/2026 — **as conexões e a conta**
+
+Dois botões novos na barra de cima, que agora tem seis.
+
+- **Conexões.** Mostra os servidores MCP do Claude: quais responderam, quais estão esperando você
+  autenticar, quais falharam (com o motivo) e quais aguardam aprovação nesta pasta. Quem responde é
+  o próprio Claude, perguntado na hora — e é por isso que a lista leva alguns segundos para aparecer:
+  ele conecta em cada servidor para saber.
+  Onde há o que fazer, há um botão: **Entrar** em quem precisa de autenticação, **ver o motivo** de
+  quem falhou. Em quem está conectado não há botão nenhum — não existe o que refazer, e um botão ali
+  estaria fingindo.
+  ⚠️ **Se a pergunta falhar, a tela diz "não consegui medir", e não "desconectado".** As duas coisas
+  são diferentes, e só uma delas é sobre os seus servidores.
+  ⚠️ *Limite:* servidor que veio no `.mcp.json` da pasta e ainda não foi aprovado **não se aprova
+  daqui** — quem aprova é a conversa. A tela diz isso em vez de oferecer um atalho que não existe.
+- **Conta.** Diz em qual conta do Claude este computador está (e-mail, plano e por onde você entrou),
+  e tem o botão de **sair / trocar de conta**.
+  ⚠️ A OFICINA **não guarda o seu login** — quem guarda é o Claude, no seu perfil de usuário. Sair
+  daqui chama quem de fato desconecta; o programa não tem senha nem token seu para apagar.
+- **Correção:** o "Sair" antigo mandava digitar `claude /logout`, um comando que **não existe mais**
+  na versão do Claude que vem dentro do programa (o certo é `claude auth logout`). A instrução tinha
+  envelhecido junto com a ferramenta. Agora o botão desconecta pelo caminho oficial, sem terminal.
+
 ## [v25] — 24/09/2026 — **primeira versão pública**
 
 A primeira versão baixável, e o primeiro dia em que este repositório existe em público. Ela

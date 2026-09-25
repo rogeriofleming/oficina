@@ -41,6 +41,11 @@ const { conectarAoGithub } = require('./github')
 const { avisoDaTroca } = require('./modelos')
 const { montarMapa } = require('./agentes')
 const { criarNavegador, AVISO: AVISO_DO_NAVEGADOR } = require('./navegador')
+/** V26 — as duas vistas novas da barra de cima: as conexões (MCPs) e a conta. */
+const mcps = require('./mcps')
+const contaDoClaude = require('./conta')
+const { criarTelaDeMcps } = require('./telaMcps')
+const { criarTelaDaConta } = require('./telaConta')
 const encerramento = require('./encerramento')
 const { criarMostrador: criarMostradorDoLimite } = require('./mostradorDoLimite')
 /** V20 — a faixa de medidores (t199) e o mostrador de tokens da barra de cima (t196). */
@@ -922,26 +927,67 @@ async function abrirArquivoCitado(caminho) {
  *
  * ⚠️ Quem guarda a credencial é o CLI do Claude, no perfil do usuário — não a OFICINA
  * (item 4 do checklist da P1; a extensão nunca leu nem escreveu token). Logo, "sair"
- * daqui não pode fingir que apagou algo. Ele encerra a conversa e manda a pessoa ao
- * lugar que realmente desconecta, dizendo isso com todas as letras.
+ * daqui não pode fingir que apagou algo. Ele encerra a conversa e chama quem realmente
+ * desconecta, dizendo isso com todas as letras.
+ *
+ * ⛔ V26 — O QUE ESTAVA ERRADO AQUI, e por que é o retrato da regra 31. Até esta versão, o caminho
+ * era abrir um terminal escrevendo `claude /logout`. Medido em 24/09/2026 no CLI que vem DENTRO do
+ * produto (2.1.261): o comando é `claude auth logout`. O `/logout` é de uma versão anterior — a
+ * instrução envelheceu junto com a ferramenta, sem ninguém editar nada, e o produto vinha
+ * mostrando isso para quem usa. Nada quebrou e nenhum teste ficou vermelho: o texto não sabia que
+ * a ferramenta tinha mudado de casa.
+ *
+ * ⚠️ E O MELHOR CAMINHO NEM É TERMINAL. A extensão oficial do Claude (a porta da conversa desde a
+ * V23) registra `claude-vscode.logout`, que desloga e ainda diz se conseguiu. Medido no código
+ * dela. A ordem passa a ser: o comando oficial, se existir nesta instalação; o terminal com os
+ * argumentos certos, se não existir. Os dois caminhos são de verdade — nenhum é enfeite.
  */
 async function sair() {
+  /*
+    ⛔ A PERGUNTA VEM ANTES DE QUALQUER ESTRAGO — e esta ordem é um conserto, não um detalhe.
+
+    Até a V26 a primeira linha desta função era `await conversaAberta.encerrar()`, e só depois vinha
+    o aviso. `encerrar()` é definitivo (o `agente.js` diz: *"fecha para valer; depois disto a
+    conversa não serve mais"*): aborta o laço, mata comando em andamento, descarta permissão
+    pendente. Enquanto o único caminho até aqui era um botão DENTRO do painel da conversa, isso
+    tinha alguma lógica. A V26 pôs este mesmo clique num ícone da barra de cima e na paleta de
+    comandos — e aí virou o que dois revisores independentes descreveram igual: um clique curioso
+    em "Conta", um Esc no diálogo, e a conversa estava morta do mesmo jeito.
+
+    Agora: pergunta primeiro, e em diálogo MODAL, como as outras ações irreversíveis deste arquivo.
+    E a frase não afirma que a conversa foi encerrada — ela diz o que VAI acontecer, e só se houver
+    conversa aberta. Afirmar "a conversa foi encerrada" quando não havia conversa nenhuma era
+    inventar um fato na tela, na única função que esta versão existia para consertar.
+  */
+  const temConversa = !!conversaAberta
+  const escolha = await vscode.window.showWarningMessage(
+    'Sair da conta do Claude?' + (temConversa ? '\n\nA conversa aberta será encerrada.' : ''),
+    { modal: true, detail: 'Quem guarda o seu login é o Claude, fora da OFICINA — ela não tem a sua senha nem o seu token para apagar.' },
+    'Sair da conta')
+  if (escolha !== 'Sair da conta') return
   if (conversaAberta) await conversaAberta.encerrar()
-  const escolha = await vscode.window.showInformationMessage(
-    'A conversa foi encerrada. Quem guarda o seu login é o Claude, fora da OFICINA: ' +
-    'para trocar de conta, digite /logout no terminal que vai abrir.',
-    'Abrir o terminal')
-  if (escolha !== 'Abrir o terminal') return
-  // ⚠️ V8: até aqui o terminal digitava `claude /logout` — o `claude` do PATH, que numa máquina
-  // sem Claude Code instalado NÃO EXISTE. O executável que vem dentro da extensão sempre existe.
-  const exe = caminhoDoClaude()
-  if (exe) {
-    vscode.window.createTerminal({ name: 'Conta do Claude', shellPath: exe }).show()
-    return
+  anotar('conta.sair')
+
+  // 1. O caminho oficial: o comando da extensão do Claude, que desloga e avisa o resultado.
+  try {
+    const comandos = await vscode.commands.getCommands(true)
+    if (comandos.includes(contaDoClaude.COMANDO_OFICIAL_DE_SAIR)) {
+      await vscode.commands.executeCommand(contaDoClaude.COMANDO_OFICIAL_DE_SAIR)
+      if (telaDaConta) await telaDaConta.atualizar()
+      return
+    }
+  } catch (e) {
+    anotar('conta.sair.falhouOficial', { erro: e && e.message })
   }
-  const t = vscode.window.createTerminal('OFICINA')
-  t.show()
-  t.sendText('claude /logout', false)   // ⚠️ `false`: escreve, não executa. Quem aperta Enter é a pessoa.
+
+  // 2. O plano B: o `claude` embutido, com os argumentos certos, num terminal visível.
+  //
+  // ⚠️ E ELE TAMBÉM RELÊ A CONTA DEPOIS. Antes, só o caminho oficial remedia — ou seja, justamente
+  // na máquina onde o plano B existe para atender (sem a extensão oficial), a pessoa saía da conta
+  // e a tela continuava mostrando o e-mail antigo até reiniciar o programa. O terminal é
+  // assíncrono, então quem avisa que acabou é o fechamento dele.
+  if (!abrirClaudeNoTerminal('Conta do Claude', contaDoClaude.ARGUMENTOS_PARA_SAIR, { aoFechar: () => telaDaConta && telaDaConta.atualizar() })) return
+  vscode.window.setStatusBarMessage('OFICINA: saindo da conta no terminal que abriu', 5000)
 }
 
 /**
@@ -1510,6 +1556,190 @@ async function recomecarSkills() {
 }
 
 /**
+ * V26 — as vistas "Conexões" (os MCPs) e "Conta". Quem lê o estado é `mcps.js`/`conta.js`, quem desenha
+ * é `telaMcps.js`/`telaConta.js`; aqui mora só o registro e a conversa com o editor.
+ *
+ * ⚠️ A PASTA IMPORTA. A lista de MCPs depende da pasta aberta: um `.mcp.json` de projeto só existe
+ * dentro dela. Por isso o CLI roda com o `cwd` da primeira pasta do espaço de trabalho — o mesmo lugar
+ * de onde a conversa lê as skills de projeto.
+ */
+function pastaDeTrabalho() {
+  const pastas = vscode.workspace.workspaceFolders
+  return pastas && pastas.length && pastas[0].uri.scheme === 'file' ? pastas[0].uri.fsPath : undefined
+}
+
+/**
+ * A pasta que a medição usou, dita como ela é — para a tela não falar no singular quando há várias,
+ * nem dizer "nesta pasta" quando não há pasta nenhuma.
+ *
+ * ⚠️ MEDIDO (revisor independente, 24/09/2026): o CLI SOBE a árvore atrás de `.mcp.json`. Dentro do
+ * projeto vinham 11 servidores; numa pasta temporária, 10 — e o arquivo que traz o servidor
+ * faltante está DOIS NÍVEIS acima da pasta aberta. "Veio no .mcp.json desta pasta" era falso.
+ */
+function ondeAMedicaoAconteceu() {
+  const pastas = vscode.workspace.workspaceFolders || []
+  const daMedicao = pastaDeTrabalho()
+  if (!daMedicao) return 'sem nenhuma pasta aberta (o Claude respondeu sobre a sua conta, não sobre um projeto)'
+  if (pastas.length > 1) return `na pasta ${daMedicao} — a primeira das ${pastas.length} abertas; as outras não foram consultadas`
+  return `na pasta ${daMedicao}`
+}
+
+let saidaDasConexoes = null
+function mostrarTextoDasConexoes(titulo, texto) {
+  if (!saidaDasConexoes) {
+    saidaDasConexoes = vscode.window.createOutputChannel('OFICINA — conexões')
+    // ⚠️ Ele nasce sob demanda, mas MORRE com a extensão: era o único `createOutputChannel` do
+    // arquivo fora das `subscriptions`, e canal não descartado é recurso vazando na recarga.
+    if (contextoDaExtensao) contextoDaExtensao.subscriptions.push(saidaDasConexoes)
+  }
+  saidaDasConexoes.clear()
+  saidaDasConexoes.appendLine(titulo)
+  saidaDasConexoes.appendLine('─'.repeat(Math.min(60, titulo.length + 10)))
+  saidaDasConexoes.appendLine(String(texto || '').trim())
+  // ⚠️ O texto abaixo vem do Claude, em inglês e cru — e a tela diz isso, em vez de deixar a pessoa
+  // achar que o programa é que resolveu falar inglês.
+  saidaDasConexoes.appendLine('')
+  saidaDasConexoes.appendLine('(o texto acima é a resposta do Claude, como ele a deu — em inglês)')
+  saidaDasConexoes.show(true)
+}
+
+/**
+ * Um terminal VISÍVEL com o `claude` embutido, já com os argumentos — nunca uma linha de comando
+ * digitada num shell.
+ *
+ * ⚠️ `shellArgs` como LISTA é o que impede qualquer nome de servidor de virar comando. É a mesma
+ * decisão do `comando.js`: quem executa passa argumentos, não texto.
+ *
+ * ⚠️ E é terminal, e não processo escondido, porque `mcp login` e `auth login` CONVERSAM: abrem o
+ * navegador e às vezes pedem para colar um endereço de volta. Um processo mudo travaria para sempre.
+ */
+function abrirClaudeNoTerminal(nome, argumentos, { aoFechar } = {}) {
+  const exe = caminhoDoClaude()
+  if (!exe) {
+    vscode.window.showWarningMessage('Não achei o programa do Claude dentro desta instalação da OFICINA.')
+    return false
+  }
+  const t = vscode.window.createTerminal({ name: nome, shellPath: exe, shellArgs: argumentos, cwd: pastaDeTrabalho() })
+  /*
+    ⚠️ QUEM AVISA QUE O TRABALHO DO TERMINAL ACABOU É O FECHAMENTO DELE — e este arquivo já sabia
+    disso desde a V8, no login da conversa: *"a conversa nova nasce quando o terminal do login fecha:
+    é ela que lê a credencial nova"*. As duas ações novas da V26 (entrar num MCP, entrar/sair da
+    conta) nasceram sem esse gancho, e o efeito era a tela continuar mostrando o estado velho depois
+    de a pessoa ter mudado o estado de verdade. Um revisor independente apontou que o padrão já
+    existia no mesmo arquivo, três funções acima.
+  */
+  if (typeof aoFechar === 'function') {
+    const assinatura = vscode.window.onDidCloseTerminal(fechado => {
+      if (fechado !== t) return
+      assinatura.dispose()
+      try { aoFechar() } catch (e) { anotar('terminal.aoFechar.falhou', { erro: e && e.message }) }
+    })
+    if (contextoDaExtensao) contextoDaExtensao.subscriptions.push(assinatura)
+  }
+  t.show()
+  return true
+}
+
+/** A vista da conta, para o "Sair" poder mandá-la reler o estado depois de deslogar. */
+let telaDaConta = null
+
+function registrarConexoes(context) {
+  const tela = criarTelaDeMcps(vscode, {
+    medir: () => mcps.lerLista({ exe: caminhoDoClaude(), cwd: pastaDeTrabalho() }),
+    detalhar: nome => mcps.lerDetalhe(nome, { exe: caminhoDoClaude(), cwd: pastaDeTrabalho() }),
+    mostrarTexto: mostrarTextoDasConexoes,
+    // Recusa nunca é silêncio: quando a tela não pode agir num servidor, ela DIZ por quê.
+    avisar: texto => vscode.window.showInformationMessage(texto),
+    avisoDaPasta: () => mcps.avisoDePastaAdulterada(pastaDeTrabalho()),
+    entrar: nome => {
+      anotar('mcps.entrar')
+      abrirClaudeNoTerminal(`Entrar no MCP: ${nome}`, mcps.argumentosParaEntrar(nome),
+        { aoFechar: () => tela.atualizar() })
+    },
+    /*
+      ⚠️ AQUI NÃO HÁ BOTÃO QUE FAZ — porque não existe a operação. Um servidor de `.mcp.json` que a
+      pessoa ainda não aprovou é aprovado NA CONVERSA (o próprio CLI diz: "run `claude` to approve"),
+      e não por um comando que a gente pudesse chamar daqui.
+
+      ⚠️ E O TEXTO NÃO AFIRMA QUE O PEDIDO APARECE. A versão anterior mandava "abra a conversa e
+      responda o pedido de aprovação que aparece" — afirmação sobre o comportamento de uma ferramenta
+      de terceiro que NINGUÉM mediu, como um revisor independente apontou. O que o CLI diz, ele diz
+      com todas as letras: `run claude to approve`. Então os dois caminhos ficam oferecidos, e o que
+      não foi medido está dito como não medido.
+    */
+    explicarAprovacao: async nome => {
+      anotar('mcps.aprovar')
+      const escolha = await vscode.window.showInformationMessage(
+        `O servidor "${nome}" veio de um arquivo .mcp.json (da pasta aberta ou de uma pasta acima dela) e ainda ` +
+        'não foi aprovado por você. Quem aprova é o Claude conversando, não esta tela: o caminho que ele mesmo ' +
+        'indica é rodar o Claude num terminal, nesta pasta, e responder o pedido de aprovação. Pela conversa da ' +
+        'OFICINA costuma funcionar também, mas isso não foi verificado aqui.',
+        'Abrir um terminal com o Claude', 'Abrir a conversa')
+      if (escolha === 'Abrir a conversa') await tentar('oficina.abrirConversaOuExplicar')
+      else if (escolha === 'Abrir um terminal com o Claude') {
+        abrirClaudeNoTerminal('Aprovar servidor MCP', [], { aoFechar: () => tela.atualizar() })
+      }
+    },
+  })
+  const vista = vscode.window.createTreeView('oficina.mcps', { treeDataProvider: tela.provedor })
+  vista.message = tela.mensagemDaVista()
+  const acompanhar = () => { vista.description = tela.descricaoDaVista() }
+  context.subscriptions.push(
+    vista,
+    tela.provedor.onDidChangeTreeData(acompanhar),
+    // Mede quando a vista aparece — e NUNCA na abertura do programa: medir conecta em cada servidor.
+    //
+    // ⚠️ E É POR ISSO QUE NÃO HÁ `if (vista.visible) …` AQUI. Havia, e um revisor independente
+    // mostrou que aquela linha desmentia o comentário: quem deixasse o painel aberto pagaria um
+    // health-check em todos os servidores a cada abertura de janela, sem ter pedido nada. Com o
+    // painel aberto na largada, a vista mostra o convite — um clique, e ele decide.
+    vista.onDidChangeVisibility(e => { if (e && e.visible) tela.aoAparecer() }),
+    // O "há N min" do título precisa envelhecer mesmo sem medição nova.
+    vscode.window.onDidChangeWindowState(e => { if (e && e.focused) { tela.redesenhar(); acompanhar() } }),
+    vscode.commands.registerCommand('oficina.mcps.abrir', () => tentar('workbench.view.extension.oficinaConexoes')),
+    // ⚠️ Chamado pela paleta, ele ABRE a vista antes de medir: sem isso, o comando rodava 6 s e não
+    // aparecia nada na tela — comando que parece não ter funcionado.
+    vscode.commands.registerCommand('oficina.mcps.atualizar', async () => {
+      if (!vista.visible) await tentar('workbench.view.extension.oficinaConexoes')
+      return tela.atualizar()
+    }),
+    vscode.commands.registerCommand('oficina.mcps.detalhe', alvo => tela.verDetalhe(alvo)),
+    vscode.commands.registerCommand('oficina.mcps.entrar', alvo => tela.entrarNoServidor(alvo)),
+    vscode.commands.registerCommand('oficina.mcps.aprovar', alvo => tela.explicarAprovacao(alvo)),
+    { dispose: () => tela.descartar() })
+}
+
+function registrarConta(context) {
+  const tela = criarTelaDaConta(vscode, {
+    medir: () => contaDoClaude.lerConta({ exe: caminhoDoClaude(), cwd: pastaDeTrabalho() }),
+    sair: () => sair(),
+    entrar: () => {
+      anotar('conta.entrar')
+      abrirClaudeNoTerminal('Conta do Claude', contaDoClaude.ARGUMENTOS_PARA_ENTRAR,
+        { aoFechar: () => tela.atualizar() })
+    },
+  })
+  const vista = vscode.window.createTreeView('oficina.conta', { treeDataProvider: tela.provedor })
+  const acompanhar = () => { vista.description = tela.descricaoDaVista() }
+  telaDaConta = tela
+  context.subscriptions.push(
+    vista,
+    tela.provedor.onDidChangeTreeData(acompanhar),
+    vista.onDidChangeVisibility(e => { if (e && e.visible) tela.aoAparecer() }),
+    vscode.window.onDidChangeWindowState(e => { if (e && e.focused) { tela.redesenhar(); acompanhar() } }),
+    vscode.commands.registerCommand('oficina.conta.abrir', () => tentar('workbench.view.extension.oficinaConta')),
+    vscode.commands.registerCommand('oficina.conta.atualizar', async () => {
+      if (!vista.visible) await tentar('workbench.view.extension.oficinaConta')
+      return tela.atualizar()
+    }),
+    vscode.commands.registerCommand('oficina.conta.sair', () => tela.sair()),
+    vscode.commands.registerCommand('oficina.conta.entrar', () => tela.entrar()),
+    // ⚠️ A referência de módulo morre junto com a vista: depois do `dispose`, o "Sair" ainda achava
+    // `telaDaConta` viva e chamava `atualizar()` sobre um emissor já descartado.
+    { dispose: () => { telaDaConta = null; tela.descartar() } })
+}
+
+/**
  * V17 — a vista "Navegador": o navegador do próprio editor, imitando aparelhos. Quem sabe os aparelhos e
  * fala com o navegador é `navegador.js`; aqui mora só o registro.
  */
@@ -1767,6 +1997,8 @@ async function activate(context) {
     { dispose: () => telaDeTokens && telaDeTokens.descartar() })
   registrarSkills(context)
   registrarNavegador(context)
+  registrarConexoes(context)
+  registrarConta(context)
   registrarBotoesDaBarraSuperior(context)
   registrarFaixaETokens(context)
   aplicarAjustesDaConversaOficial()

@@ -372,6 +372,60 @@
         "title": "Girar o aparelho do navegador (retrato/paisagem)",
         "category": "OFICINA",
         "icon": "$(sync)"
+      },
+      {
+        "command": "oficina.mcps.abrir",
+        "title": "Conexões (os MCPs do Claude)",
+        "category": "OFICINA",
+        "icon": "$(plug)"
+      },
+      {
+        "command": "oficina.mcps.atualizar",
+        "title": "Conectar de novo em todos",
+        "category": "OFICINA",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "oficina.mcps.detalhe",
+        "title": "Ver a ficha deste servidor",
+        "category": "OFICINA",
+        "icon": "$(info)"
+      },
+      {
+        "command": "oficina.mcps.entrar",
+        "title": "Entrar neste servidor",
+        "category": "OFICINA",
+        "icon": "$(key)"
+      },
+      {
+        "command": "oficina.mcps.aprovar",
+        "title": "Como aprovar este servidor",
+        "category": "OFICINA",
+        "icon": "$(question)"
+      },
+      {
+        "command": "oficina.conta.abrir",
+        "title": "Sua conta do Claude",
+        "category": "OFICINA",
+        "icon": "$(account)"
+      },
+      {
+        "command": "oficina.conta.atualizar",
+        "title": "Ver de novo em qual conta você está",
+        "category": "OFICINA",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "oficina.conta.sair",
+        "title": "Sair / trocar de conta",
+        "category": "OFICINA",
+        "icon": "$(sign-out)"
+      },
+      {
+        "command": "oficina.conta.entrar",
+        "title": "Entrar numa conta do Claude",
+        "category": "OFICINA",
+        "icon": "$(sign-in)"
       }
     ],
     "menus": {
@@ -413,6 +467,18 @@
       "commandPalette": [
         {
           "command": "oficina.novaConversaEquipe",
+          "when": "false"
+        },
+        {
+          "command": "oficina.mcps.detalhe",
+          "when": "false"
+        },
+        {
+          "command": "oficina.mcps.entrar",
+          "when": "false"
+        },
+        {
+          "command": "oficina.mcps.aprovar",
           "when": "false"
         },
         {
@@ -481,6 +547,16 @@
           "command": "oficina.navegador.girar",
           "when": "view == oficina.navegador",
           "group": "navigation@2"
+        },
+        {
+          "command": "oficina.mcps.atualizar",
+          "when": "view == oficina.mcps",
+          "group": "navigation"
+        },
+        {
+          "command": "oficina.conta.atualizar",
+          "when": "view == oficina.conta",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -503,6 +579,21 @@
           "command": "oficina.skills.mostrar",
           "when": "view == oficina.skills && viewItem =~ /\\boculta\\b/",
           "group": "inline@2"
+        },
+        {
+          "command": "oficina.mcps.entrar",
+          "when": "view == oficina.mcps && viewItem =~ /\\bacao-entrar\\b/",
+          "group": "inline@1"
+        },
+        {
+          "command": "oficina.mcps.aprovar",
+          "when": "view == oficina.mcps && viewItem =~ /\\bacao-aprovar\\b/",
+          "group": "inline@1"
+        },
+        {
+          "command": "oficina.mcps.detalhe",
+          "when": "view == oficina.mcps && viewItem =~ /\\bacao-detalhe\\b/",
+          "group": "inline@1"
         }
       ],
       "editor/context": [
@@ -548,11 +639,11 @@
           },
           {
             "id": "arquivos",
-            "title": "A barra de ícones, em cima: arquivos, Git e skills",
-            "description": "A barra de ícones fica **no topo**, na horizontal, entre a marca e a barra de pesquisa. Ela tem quatro botões: **Arquivos** (as cores dizem o que o Git vê: modificado, novo, ignorado), **Git** (mudanças, commit, empurrar e puxar), **Tokens** (o detalhe do gasto da conversa) e **Skills**. Um clique abre, outro clique no mesmo botão fecha. O navegador, que abre uma página e imita a tela de um celular, tablet ou monitor, fica na paleta de comandos (Ctrl+Shift+P, **Navegador**).\n\n[Abrir os arquivos](command:workbench.view.explorer)\n[Abrir o Git](command:workbench.view.scm)\n[Conectar ao GitHub](command:oficina.conectarGithub)",
+            "title": "A barra de ícones, em cima: arquivos, Git, skills, conexões e conta",
+            "description": "A barra de ícones fica **no topo**, na horizontal, entre a marca e a barra de pesquisa. Ela tem seis botões: **Arquivos** (as cores dizem o que o Git vê: modificado, novo, ignorado), **Git** (mudanças, commit, empurrar e puxar), **Tokens** (o detalhe do gasto da conversa), **Skills**, **Conexões** (quais MCPs responderam e quais estão esperando você) e **Conta** (em qual conta do Claude você está, e por onde sair dela). Um clique abre, outro clique no mesmo botão fecha. O navegador, que abre uma página e imita a tela de um celular, tablet ou monitor, fica na paleta de comandos (Ctrl+Shift+P, **Navegador**).\n\n[Abrir os arquivos](command:workbench.view.explorer)\n[Abrir o Git](command:workbench.view.scm)\n[Ver as conexões](command:oficina.mcps.abrir)\n[Conectar ao GitHub](command:oficina.conectarGithub)",
             "media": {
               "markdown": "boas-vindas/arquivos.md",
-              "altText": "Os quatro botões da barra de cima"
+              "altText": "Os seis botões da barra de cima"
             },
             "completionEvents": [
               "onCommand:workbench.view.explorer"
@@ -614,6 +705,16 @@
           "id": "oficinaNavegador",
           "title": "Navegador",
           "icon": "painel/navegador.svg"
+        },
+        {
+          "id": "oficinaConexoes",
+          "title": "Conexões",
+          "icon": "painel/conexoes.svg"
+        },
+        {
+          "id": "oficinaConta",
+          "title": "Conta",
+          "icon": "painel/conta.svg"
         }
       ]
     },
@@ -634,6 +735,18 @@
         {
           "id": "oficina.navegador",
           "name": "Navegador"
+        }
+      ],
+      "oficinaConexoes": [
+        {
+          "id": "oficina.mcps",
+          "name": "Conexões"
+        }
+      ],
+      "oficinaConta": [
+        {
+          "id": "oficina.conta",
+          "name": "Conta"
         }
       ]
     }

@@ -45,7 +45,11 @@ Get-FileHash .\OficinaSetup.exe -Algorithm SHA256
 2. **Entre na sua própria conta do Claude.** A conversa mostra o caminho de entrada quando esta
    máquina ainda não entrou numa conta. A OFICINA não faz login por você, não guarda senha nem
    token, e não serve para usar a conta de outra pessoa.
-3. **Escolha o tema**, claro ou escuro, pela paleta de comandos (`Ctrl+Shift+P` → "tema").
+   O ícone **Conta**, na barra de cima, diz em qual conta você está e é por onde se sai dela para
+   entrar em outra — quem guarda o login é o Claude, fora da OFICINA.
+3. **Veja as suas conexões.** O ícone **Conexões**, ao lado, pergunta ao Claude quais servidores
+   MCP responderam, quais estão esperando você autenticar e quais falharam — com o motivo.
+4. **Escolha o tema**, claro ou escuro, pela paleta de comandos (`Ctrl+Shift+P` → "tema").
 
 ## ⚠️ O agente age sem pedir aprovação, de fábrica
 

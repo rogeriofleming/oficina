@@ -71,11 +71,21 @@ try {
       if (c.width === 0 || c.height === 0) return null
       return { x: Math.round(c.x), y: Math.round(c.y), w: Math.round(c.width), h: Math.round(c.height) }
     }
+    /*
+      ⚠️ O RÓTULO MORA NO FILHO, e não no item — medido com a sonda do DOM em 24/09/2026, depois de
+      o critério novo do 0027 reprovar um build CERTO. O `.action-item` não tem `aria-label`; quem
+      tem é o `.action-label` dentro dele (ou o `title`, quando o ícone é imagem). Lendo do lugar
+      errado, todos os seis ícones vinham com rótulo vazio — e o teste dizia que "faltavam", com a
+      barra perfeita na tela.
+
+      É a mesma família dos achados desta versão: quem afirma tem de ler de onde o dado está.
+    */
+    const rotuloDe = el => {
+      const lab = el.querySelector('.action-label')
+      return ((lab && (lab.getAttribute('aria-label') || lab.title)) || el.getAttribute('aria-label') || el.textContent || '').trim()
+    }
     const itens = seletor => Array.from(document.querySelectorAll(seletor))
-      .map(el => ({
-        rotulo: (el.getAttribute('aria-label') || el.textContent || '').trim(),
-        ...(caixa(el) || {})
-      }))
+      .map(el => ({ rotulo: rotuloDe(el), ...(caixa(el) || {}) }))
       .filter(i => i.w > 0)
 
     const naBarraDeTitulo = '.part.titlebar .titlebar-activity-container .action-item'
@@ -132,6 +142,42 @@ try {
   } else {
     checar('estao DEPOIS da logo e ANTES da barra de pesquisa', false,
       `logo ${t.logo ? 'ok' : 'nao achei'} · pesquisa ${t.pesquisa ? 'ok' : 'nao achei'} · ${t.icones.length} icone(s)`)
+  }
+
+  /*
+    4b. ⛔ A DIVIDA DO PATCH 0027, PAGA — V26.
+
+    O 0027 existe porque a largura reservada por icone (26 px) tinha ficado menor que o icone real
+    (32 px): com CINCO fixados, dois caiam no transbordo "Additional Views". Ele foi corrigido e
+    entrou em dois builds, mas NUNCA foi provado na tela, porque de fabrica havia so quatro icones
+    e quatro cabiam de qualquer jeito — ou seja, estava escrito e nao medido.
+
+    A V26 fixa o quinto (Conexoes) e o SEXTO (Conta) — entao este e o momento de cobrar. O criterio
+    nao conta um numero copiado: ele deriva os fixados de fabrica do MANIFESTO e do `product.json`
+    (a mesma conta que o `ponte.mjs` faz no guia), e exige que cada um esteja na barra com caixa de
+    verdade, e que NADA tenha caido no transbordo.
+  */
+  {
+    const manifesto = JSON.parse(fs.readFileSync(path.join(REPO, 'extensoes', 'oficina-claude', 'package.json'), 'utf8'))
+    const produto = JSON.parse(fs.readFileSync(path.join(REPO, 'produto', 'product.json'), 'utf8'))
+    const soltos = produto.defaultUnpinnedViewContainers || []
+    const nossosFixados = (manifesto.contributes.viewsContainers.activitybar || [])
+      .filter(c => !soltos.includes('workbench.view.extension.' + c.id))
+      .map(c => c.title)
+    const rotulos = t.icones.map(i => i.rotulo).join(' | ')
+    const faltando = nossosFixados.filter(nome => !t.icones.some(i => i.rotulo.includes(nome)))
+    const transbordo = t.icones.filter(i => /Additional Views|Vistas adicionais/i.test(i.rotulo))
+    checar('⛔ 0027: TODO icone fixado de fabrica esta na barra, e nada caiu no transbordo',
+      faltando.length === 0 && transbordo.length === 0,
+      `fixados nossos: ${nossosFixados.join(', ')} · na barra: ${rotulos} · faltando: ${faltando.join(', ') || 'nenhum'} · transbordo: ${transbordo.length}`)
+    // E o passo entre eles e o mesmo: se a conta do patch discordasse do CSS, os icones se
+    // sobreporiam ou sobraria buraco — e isso aparece na diferenca entre os x.
+    if (t.icones.length >= 3) {
+      const passos = t.icones.slice(1).map((i, n) => i.x - t.icones[n].x)
+      const iguais = passos.every(p => Math.abs(p - passos[0]) <= 1)
+      checar('⛔ 0027: o passo entre os icones e o mesmo (a conta do patch bate com o CSS)',
+        iguais, `passos: ${passos.join(', ')} px`)
+    }
   }
 
   // 6. nenhuma segunda barra sobrou

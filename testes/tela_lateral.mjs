@@ -84,8 +84,26 @@ const larguraDaLateral = win => win.evaluate(() => {
   return s && getComputedStyle(s).display !== 'none' ? Math.round(s.getBoundingClientRect().width) : 0
 })
 const vistaAberta = (win, id) => win.locator(`[id="${id}"]`).first().isVisible().catch(() => false)
-// A barra fica SÓ com os três pedidos: o Navegador nasce solto (abre pela paleta).
-const OS_TRES = ['Explorer', 'Source Control', 'Skills']
+/*
+  ⛔ OS ÍCONES DE FÁBRICA SÃO DERIVADOS, NÃO ESCRITOS À MÃO.
+
+  Era `['Explorer', 'Source Control', 'Skills']`, com a conta `+ 1` para a vista Tokens. Quando a
+  V26 acrescentou dois contêineres de fábrica (Conexões e Conta), estes dois critérios ficaram
+  vermelhos — e o vermelho parecia regressão sendo acerto. É exatamente a pergunta que o conferidor
+  pré-build manda responder antes de compilar (*"há critério gravando o jeito ANTIGO como
+  esperado?"*), e que eu respondi olhando só dois dos três lugares onde a lista morava.
+
+  A lista agora sai do MANIFESTO e do `product.json` — os mesmos dois arquivos que mandam na barra
+  de verdade, e a mesma conta que o `ponte.mjs` e a suíte da barra de cima fazem. Assim, acrescentar
+  ou tirar um contêiner de fábrica não deixa mais nenhum critério para trás.
+
+  O Navegador não entra: ele nasce SOLTO (está em `defaultUnpinnedViewContainers`) e abre pela paleta.
+*/
+const manifestoDaExtensao = JSON.parse(fs.readFileSync(path.join(REPO, 'extensoes', 'oficina-claude', 'package.json'), 'utf8'))
+const produtoDaOficina = JSON.parse(fs.readFileSync(path.join(REPO, 'produto', 'product.json'), 'utf8'))
+const OS_TRES = ['Explorer', 'Source Control', ...(manifestoDaExtensao.contributes.viewsContainers.activitybar || [])
+  .filter(c => !(produtoDaOficina.defaultUnpinnedViewContainers || []).includes('workbench.view.extension.' + c.id))
+  .map(c => c.title)]
 
 async function abrir() {
   const app = await abrirOficina(_electron, { exe, projeto, area })
@@ -130,7 +148,7 @@ try {
   checar('⛔ perfil limpo: a barra de ícones NÃO ocupa a lateral (t198: ele mandou para o topo)',
     !barraVisivel, `activitybar visível: ${barraVisivel}`)
   const icones = await iconesDaLateral(win)
-  checar('⛔ perfil limpo: os ícones são exatamente Arquivos, Git e Skills (mais a conversa oficial)',
+  checar('⛔ perfil limpo: os ícones são exatamente os de fábrica (derivados do manifesto), mais a conversa oficial',
     OS_TRES.every(r => icones.includes(r)) && icones.length <= OS_TRES.length + 1, icones.join(', '))
   // E eles estão EM LINHA, que é o que ele pediu ("na horizontal").
   const emLinha = await win.evaluate(() => {
@@ -323,10 +341,14 @@ try {
     A conta antiga (`OS_TRES.length + 1`) era de quando a vista Tokens era mantida aberta à força
     e não entrava nesta lista; o `t197` tirou essa força, e a conta ficou para trás.
 
+    ⚠️ E desde a V26 o `Tokens` JÁ ESTÁ em `OS_TRES` — que agora é derivado do manifesto, e não uma
+    lista escrita à mão. Somá-lo de novo aqui faria a lista esperada ter um item repetido, e a
+    contagem exata nunca bateria: o critério ficaria vermelho para sempre, pelo motivo errado.
+
     O que este critério protege continua o mesmo: nada aparecer SOZINHO — por isso a lista é
     exata, e não "contém".
   */
-  const ESPERADOS = [...OS_TRES, 'Search', 'Tokens']
+  const ESPERADOS = [...OS_TRES, 'Search']
   checar('reaberto: só está na barra o que este teste pediu — nada apareceu sozinho',
     ESPERADOS.every(r => reaberto.includes(r)) && reaberto.length === ESPERADOS.length,
     `${reaberto.join(', ')}  (esperado: ${ESPERADOS.join(', ')})`)

@@ -998,10 +998,24 @@ const SESSAO_ATIVA = 20
 const MOSTRADOR_DE_TOKENS = 23 // V24: 20 -> 23, os tres estados do mostrador (numeros, vazio, falhou)
 const TELA_DO_CONSUMO = 15
 const AJUSTES_DA_OFICIAL = 35 // V21: +8 (ancoras [class*=] e a derivacao dos modos)
+// Pisos da V26 (24/09/2026): os MCPs e a conta — o estado de uma ferramenta de TERCEIRO, que e o
+// lugar onde este produto ja se enganou duas vezes (o mostrador que diria "0" quando a medicao
+// falhava, e o `/logout` que envelheceu junto com o CLI). Por isso os criterios que mais importam
+// nestas quatro suites sao os do NAO SEI: "nao consegui medir" nunca pode ser desenhado como
+// "desconectado" nem como "fora da conta".
+// Os totais sao os do modo normal; `--real` acrescenta um criterio em MCPS e em CONTA.
+// Os numeros subiram na REVISAO (mesma sessao): tres revisores de fora acharam 32 coisas, e cada
+// conserto virou criterio. Os maiores: o laco infinito que travava o editor inteiro com um nome de
+// servidor vindo de .mcp.json; a lista parcial entregue como completa; "nao ha nenhum servidor"
+// afirmado sem a prova do CLI; o botao que matava a conversa antes de perguntar.
+const MCPS = 72
+const TELA_MCPS = 58
+const CONTA = 38
+const TELA_CONTA = 28
 
 // V10 — o MEDIDOR DE TOKENS (motor) e a TELA dele (barra e vista), em node puro.
 {
-  for (const [arquivo, nomeDoPiso, piso] of [['tokens.mjs', 'o medidor de tokens', TOKENS], ['tela_tokens.mjs', 'a tela de tokens', TELA_TOKENS], ['layout.mjs', 'os layouts com nome (V11)', LAYOUT], ['skills.mjs', 'a lista de skills (V12)', SKILLS], ['tela_skills.mjs', 'a vista de skills (V12)', TELA_SKILLS], ['relogio_cache.mjs', 'o relogio do cache (V14)', RELOGIO_CACHE], ['uso_do_plano.mjs', 'o uso do plano (V20)', USO_DO_PLANO], ['titulo_da_conversa.mjs', 'o nome da conversa (V20)', TITULO_DA_CONVERSA], ['faixa_do_limite.mjs', 'a faixa do limite (V20)', FAIXA_DO_LIMITE], ['consulta_de_uso.mjs', 'a consulta de uso ao vivo (V20)', CONSULTA_DE_USO], ['padrao_da_conversa_oficial.mjs', 'o padrao de fabrica da conversa oficial (V20)', PADRAO_DA_OFICIAL], ['sessao_ativa.mjs', 'qual conversa esta aberta (V20)', SESSAO_ATIVA], ['mostrador_de_tokens.mjs', 'o mostrador de tokens da barra (V20)', MOSTRADOR_DE_TOKENS], ['tela_do_consumo.mjs', 'a tela do consumo (V20)', TELA_DO_CONSUMO], ['ajustes_da_conversa_oficial.mjs', 'os ajustes na conversa oficial (V20)', AJUSTES_DA_OFICIAL]]) {
+  for (const [arquivo, nomeDoPiso, piso] of [['tokens.mjs', 'o medidor de tokens', TOKENS], ['tela_tokens.mjs', 'a tela de tokens', TELA_TOKENS], ['layout.mjs', 'os layouts com nome (V11)', LAYOUT], ['skills.mjs', 'a lista de skills (V12)', SKILLS], ['tela_skills.mjs', 'a vista de skills (V12)', TELA_SKILLS], ['relogio_cache.mjs', 'o relogio do cache (V14)', RELOGIO_CACHE], ['uso_do_plano.mjs', 'o uso do plano (V20)', USO_DO_PLANO], ['titulo_da_conversa.mjs', 'o nome da conversa (V20)', TITULO_DA_CONVERSA], ['faixa_do_limite.mjs', 'a faixa do limite (V20)', FAIXA_DO_LIMITE], ['consulta_de_uso.mjs', 'a consulta de uso ao vivo (V20)', CONSULTA_DE_USO], ['padrao_da_conversa_oficial.mjs', 'o padrao de fabrica da conversa oficial (V20)', PADRAO_DA_OFICIAL], ['sessao_ativa.mjs', 'qual conversa esta aberta (V20)', SESSAO_ATIVA], ['mostrador_de_tokens.mjs', 'o mostrador de tokens da barra (V20)', MOSTRADOR_DE_TOKENS], ['tela_do_consumo.mjs', 'a tela do consumo (V20)', TELA_DO_CONSUMO], ['ajustes_da_conversa_oficial.mjs', 'os ajustes na conversa oficial (V20)', AJUSTES_DA_OFICIAL], ['mcps.mjs', 'a leitura dos MCPs (V26)', MCPS], ['tela_mcps.mjs', 'a vista de conexoes (V26)', TELA_MCPS], ['conta.mjs', 'a leitura da conta (V26)', CONTA], ['tela_conta.mjs', 'a vista da conta (V26)', TELA_CONTA]]) {
     let saida = '', codigo = 0
     try {
       saida = execFileSync(process.execPath, [path.join(REPO, 'testes', arquivo)], { encoding: 'utf8', timeout: 120000 })
@@ -1643,11 +1657,27 @@ const semComentarios = arquivo =>
     checar('V21', 'os icones das vistas na barra de cima (t198), na tela', false, 'sem executavel')
     checar('V21', 'a fileira de acoes da aba, na tela (patch 0019)', false, 'sem executavel')
   } else {
-    const ICONES_EM_CIMA = 6
+    // V26: 6 -> 8. Entraram os dois criterios que PAGAM a divida do patch 0027 (todo icone fixado
+    // de fabrica esta na barra e nada caiu no transbordo; o passo entre eles e o mesmo). Ate aqui a
+    // suite media "ha pelo menos dois icones em linha", que quatro cumpriam sem provar nada — e era
+    // por isso que o 0027 seguia "escrito, nao medido" mesmo depois de dois builds.
+    const ICONES_EM_CIMA = 8
     const a = rodarSuiteCara('tela_barra_de_icones_em_cima.mjs', exe, 600000)
     checar('V21', 'os icones das vistas na barra de cima (t198), na tela', a.ok, a.detalhe)
     checar('V21', 'os icones na barra de cima: nenhum criterio sumiu', a.total === ICONES_EM_CIMA,
       `${a.total === null ? 'sem placar' : a.total} (esperado ${ICONES_EM_CIMA})`)
+
+    /*
+      V26: as duas vistas novas, NA TELA. As 194 assercoes em node puro provam o motor com um
+      editor de mentira; nenhuma delas prova que o editor DE VERDADE registra os conteineres,
+      desenha os icones e abre as vistas. A historia deste projeto e feita de coisas que so
+      existiram na tela (a barra que nasceu vazia, os icones de 6x6 px, o `order` do CSS).
+    */
+    const CONEXOES_E_CONTA = 11
+    const c = rodarSuiteCara('tela_conexoes_e_conta.mjs', exe, 600000)
+    checar('V26', 'as vistas Conexoes e Conta, na tela', c.ok, c.detalhe)
+    checar('V26', 'as vistas Conexoes e Conta: nenhum criterio sumiu', c.total === CONEXOES_E_CONTA,
+      `${c.total === null ? 'sem placar' : c.total} (esperado ${CONEXOES_E_CONTA})`)
 
     const FILEIRA_DA_ABA = 4
     const b = rodarSuiteCara('tela_fileira_da_aba.mjs', exe, 600000)
