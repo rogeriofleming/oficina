@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/imagens/capa.png" alt="OFICINA — o editor que fala português, com o agente já dentro" width="100%">
+  <img src="docs/imagens/capa.png" alt="OFICINA — tipo um VS Code, mas feito especialmente pro Claude Code" width="100%">
 </p>
 
 <p align="center">
@@ -12,13 +12,15 @@
 
 ---
 
-**Um editor de código construído a partir do núcleo open-source do
-[Visual Studio Code](https://github.com/microsoft/vscode)** — com nome, identidade e
-comportamento padrão próprios, o agente já montado por dentro, e a interface inteira em
-português.
+**Tipo um VS Code — mas feito especialmente pro Claude Code.**
 
-A OFICINA **não é** o Visual Studio Code. É uma compilação própria daquele núcleo (MIT),
-sem a telemetria e sem as marcas do binário oficial da Microsoft. As extensões vêm da
+Mesmo núcleo open-source do
+[Visual Studio Code](https://github.com/microsoft/vscode) (MIT), outra casa por dentro: o
+agente não é uma extensão que você instala depois, é o motivo do programa existir. Abre a
+pasta, pede em português, e a tela inteira já está montada em volta disso.
+
+A OFICINA **não é** o Visual Studio Code. É uma compilação própria daquele núcleo, sem a
+telemetria e sem as marcas do binário oficial da Microsoft. As extensões vêm da
 [Open VSX](https://open-vsx.org), o registro aberto da Eclipse Foundation — a loja da
 Microsoft, pelos termos dela, é só para os produtos dela.
 
@@ -26,11 +28,11 @@ Microsoft, pelos termos dela, é só para os produtos dela.
   <img src="docs/imagens/conversa.png" alt="A conversa da OFICINA, aberta numa pasta" width="100%">
 </p>
 
-## O que ela tem que o editor de origem não tem
+## O que muda em relação ao VS Code
 
 |  |  |
 |---|---|
-| **A conversa é o programa** | Você abre uma pasta e pede em português. O agente lê e escreve os arquivos dali; não é um painel lateral encaixado depois. |
+| **A conversa é o programa** | O Claude Code não fica num painel lateral encaixado depois: é a tela principal, com atalho próprio e a janela montada em volta dele. |
 | **Uma barra de cima com seis botões** | Arquivos, conversa, tokens, skills, conexões e conta — o que se usa o dia inteiro, sempre à mão, sem caçar em menu. |
 | **Dois temas medidos, não escolhidos no olho** | Cada degrau de superfície é o primeiro valor que se separa do anterior por ΔL\* ≥ 3 no CIELAB. O contraste do texto é AAA, e o teste quebra se alguém afrouxar. |
 | **Sem telemetria, sem loja fechada** | Nada sai da sua máquina. As extensões vêm da Open VSX. |
@@ -123,8 +125,9 @@ Este repositório é publicado como está, sem garantia e **sem suporte**. Se a 
 
 ---
 
-<sub><b>English:</b> OFICINA is a code editor built from the open-source core of Visual
-Studio Code (MIT), with the coding agent built in and a Portuguese-language interface. It
-is not Visual Studio Code: it is an independent build with its own name, identity and
-defaults, no Microsoft telemetry and no Microsoft branding. Extensions come from Open VSX.
-Provided as is, <b>without support</b>.</sub>
+<sub><b>English:</b> Like VS Code — but built specifically for Claude Code. OFICINA is an
+editor compiled from the open-source core of Visual Studio Code (MIT), with the agent as
+the main surface rather than a side panel, and a Portuguese-language interface. It is not
+Visual Studio Code: it is an independent build with its own name, identity and defaults,
+no Microsoft telemetry and no Microsoft branding. Extensions come from Open VSX. Provided
+as is, <b>without support</b>.</sub>
