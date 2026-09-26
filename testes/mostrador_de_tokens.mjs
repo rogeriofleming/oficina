@@ -21,6 +21,24 @@ const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const requerer = createRequire(import.meta.url)
 const M = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'mostradorDeTokens.js'))
 
+
+
+/*
+  ⚠️ V30 — A CHAVE LEVA JSON. Ate a V29 ela levava UM texto; agora leva { degraus, botoes }, porque
+  quem escolhe qual degrau cabe passou a ser o nucleo, que sabe a largura (patch 0030). Os criterios
+  abaixo continuam perguntando "o que a barra desenharia?", e a resposta e o degrau MAIS COMPLETO —
+  por isso o leitor mora num lugar so, em vez de cada criterio parsear do seu jeito.
+*/
+function saiu(vs) {
+  const cru = vs.chaves[M.CHAVE_DO_TEXTO]
+  if (typeof cru !== 'string' || !cru) return ''
+  try {
+    const o = JSON.parse(cru)
+    return (o && Array.isArray(o.degraus) && o.degraus[0]) || ''
+  } catch {
+    return cru
+  }
+}
 const resultados = []
 function checar(nome, ok, detalhe) {
   resultados.push({ nome, ok: !!ok })
@@ -76,8 +94,8 @@ function montar(cfg = {}) {
   checar('1. sem pasta aberta o mostrador CONTINUA na barra, no estado vazio',
     vs.chaves[M.CHAVE_DE_MOSTRAR] === true, JSON.stringify(vs.chaves))
   checar('1b. e o texto e o do estado vazio, sem inventar medida',
-    String(vs.chaves[M.CHAVE_DO_TEXTO] || '').startsWith(M.SEM_CONVERSA),
-    JSON.stringify(vs.chaves[M.CHAVE_DO_TEXTO]))
+    String(saiu(vs) || '').startsWith(M.SEM_CONVERSA),
+    JSON.stringify(saiu(vs)))
   checar('1c. e sem pasta nao se cria medidor (nao sai lendo disco a toa)', !m.temMedidor)
 }
 
@@ -85,7 +103,7 @@ function montar(cfg = {}) {
 {
   const { vs, m } = montar()
   m.tique()
-  const texto = vs.chaves[M.CHAVE_DO_TEXTO] || ''
+  const texto = saiu(vs) || ''
   const primeiraLinha = texto.split('\n')[0]
   checar('2. com conversa e arquivo, publica os números',
     vs.chaves[M.CHAVE_DE_MOSTRAR] === true && primeiraLinha === '$2.50  117k/2.0M',
@@ -103,7 +121,7 @@ function montar(cfg = {}) {
   // nome NUNCA aparecia. Eu cheguei a declarar isso como limitação; era defeito meu.
   const { vs, m } = montar({ lerTitulo: () => 'Meu Projeto' })
   m.tique()
-  const primeiraLinha = (vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0]
+  const primeiraLinha = (saiu(vs) || '').split('\n')[0]
   checar('3b. o nome que ELE deu à conversa vai para a barra, na frente dos números',
     primeiraLinha.startsWith('Meu Projeto  $2.50  '), primeiraLinha)
 
@@ -149,14 +167,14 @@ function montar(cfg = {}) {
   checar('6a. medidor que lanca: a barra CONTINUA, dizendo que nao mediu',
     vs.chaves[M.CHAVE_DE_MOSTRAR] === true, JSON.stringify(vs.chaves))
   checar('6a-bis. e o texto e `?`, nunca `0` (zero seria medida que ninguem fez)',
-    String(vs.chaves[M.CHAVE_DO_TEXTO] || '').startsWith(M.SEM_MEDIDA),
-    JSON.stringify(vs.chaves[M.CHAVE_DO_TEXTO]))
+    String(saiu(vs) || '').startsWith(M.SEM_MEDIDA),
+    JSON.stringify(saiu(vs)))
 
   const { vs: vs2, m: m2 } = montar({ criarMedidor: () => { throw new Error('nao abriu') } })
   m2.tique()
   checar('6b. medidor que nem nasce: a barra continua, tambem dizendo que nao mediu',
-    vs2.chaves[M.CHAVE_DE_MOSTRAR] === true && String(vs2.chaves[M.CHAVE_DO_TEXTO] || '').startsWith(M.SEM_MEDIDA),
-    JSON.stringify(vs2.chaves[M.CHAVE_DO_TEXTO]))
+    vs2.chaves[M.CHAVE_DE_MOSTRAR] === true && String(saiu(vs2) || '').startsWith(M.SEM_MEDIDA),
+    JSON.stringify(saiu(vs2)))
 
   const { vs: vs3, m: m3 } = montar({ acharTranscrito: () => null })
   m3.tique()
@@ -168,8 +186,8 @@ function montar(cfg = {}) {
     Sem este criterio, mandar tudo que nao mede para o mesmo texto passaria despercebido.
   */
   checar('6c. conversa sem arquivo ainda: estado VAZIO, nao estado de falha',
-    vs3.chaves[M.CHAVE_DE_MOSTRAR] === true && String(vs3.chaves[M.CHAVE_DO_TEXTO] || '').startsWith(M.SEM_CONVERSA),
-    JSON.stringify(vs3.chaves[M.CHAVE_DO_TEXTO]))
+    vs3.chaves[M.CHAVE_DE_MOSTRAR] === true && String(saiu(vs3) || '').startsWith(M.SEM_CONVERSA),
+    JSON.stringify(saiu(vs3)))
 }
 
 // ── 8 ──
@@ -246,7 +264,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
       // ⚠️ SEM `criarMedidor` INJETADO: usa o padrão, que é `new T.MedidorDaConversa(...)`.
     })
     m.tique()
-    const texto = String(vs.chaves[M.CHAVE_DO_TEXTO] || '')
+    const texto = String(saiu(vs) || '')
     const primeira = texto.split('\n')[0]
     checar('SEM DUBLÊ 2. com o medidor REAL e uma conversa real, a barra publica número',
       vs.chaves[M.CHAVE_DE_MOSTRAR] === true && /\d/.test(primeira),
@@ -288,9 +306,9 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     m.tique()
     checar('SEM DUBLE 4a. conversa sem arquivo ainda: mostra o estado vazio, e nao cria medidor',
       vs.chaves[M.CHAVE_DE_MOSTRAR] === true
-      && String(vs.chaves[M.CHAVE_DO_TEXTO] || '').startsWith(M.SEM_CONVERSA)
+      && String(saiu(vs) || '').startsWith(M.SEM_CONVERSA)
       && criados === 0,
-      `texto=${JSON.stringify(vs.chaves[M.CHAVE_DO_TEXTO])} criados=${criados}`)
+      `texto=${JSON.stringify(saiu(vs))} criados=${criados}`)
     existe = true
     m.tique()
     checar('SEM DUBLÊ 4b. quando o arquivo aparece, o medidor SE RECUPERA (mesmo id)',
@@ -314,8 +332,8 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     titulo = 'Novo Nome'
     m.tique()
     checar('SEM DUBLÊ 5. renomear a conversa muda o nome na barra, sem trocar de id',
-      String(vs.chaves[M.CHAVE_DO_TEXTO] || '').startsWith('Novo Nome  '),
-      String(vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0])
+      String(saiu(vs) || '').startsWith('Novo Nome  '),
+      String(saiu(vs) || '').split('\n')[0])
   }
 }
 
@@ -348,16 +366,16 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
   // ⚠️ SUCESSOR (V27) de "9b. e a barra mostra os numeros": mostrar SÓ os números nesse estado fazia a
   // barra parecer saudável numa conversa sem as regras do projeto. Os números continuam; o aviso vem na frente.
   checar('9b. sem pasta e com conversa: numeros E o aviso `⚠ sem pasta` na frente',
-    String(vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0] === `${M.AVISO_SEM_PASTA}  $1.24  69.6k/1.0M`,
-    String(vs.chaves[M.CHAVE_DO_TEXTO] || '').split('\n')[0])
+    String(saiu(vs) || '').split('\n')[0] === `${M.AVISO_SEM_PASTA}  $1.24  69.6k/1.0M`,
+    String(saiu(vs) || '').split('\n')[0])
   // A frase não promete demais (revisão, 25/09): o que fica de fora é o que mora DENTRO da pasta do
   // projeto; o que é pessoal continua valendo — e sem o jargão "travas".
   checar('9b-bis. e a dica diz o que fica de fora (o que mora na pasta do projeto), o que continua, e o que fazer',
-    /CLAUDE\.md/.test(vs.chaves[M.CHAVE_DO_TEXTO]) && /pessoais, continuam/.test(vs.chaves[M.CHAVE_DO_TEXTO]) &&
-    /Abrir Pasta/.test(vs.chaves[M.CHAVE_DO_TEXTO]) && !/travas/.test(vs.chaves[M.CHAVE_DO_TEXTO]))
+    /CLAUDE\.md/.test(saiu(vs)) && /pessoais, continuam/.test(saiu(vs)) &&
+    /Abrir Pasta/.test(saiu(vs)) && !/travas/.test(saiu(vs)))
   const vsComPasta = montarPadrao([{ uri: { fsPath: 'd:/aberta' } }])
   checar('9c. com pasta aberta, continua sendo a pasta aberta', pedidas[1] === 'd:/aberta', JSON.stringify(pedidas))
-  checar('9d. com pasta aberta, nenhum aviso', !String(vsComPasta.chaves[M.CHAVE_DO_TEXTO]).includes(M.AVISO_SEM_PASTA))
+  checar('9d. com pasta aberta, nenhum aviso', !String(saiu(vsComPasta)).includes(M.AVISO_SEM_PASTA))
 }
 
 // ── 10 ── o formato do PAINEL de tokens (V27): "eu queria o msm"
@@ -406,22 +424,43 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     criarMedidor: t => ({ atualizar() { }, resumo: () => (t.includes('a-oficina') ? resumoDe(69600, 1000000, 1.24) : resumoDe(30400, 500000, 0.76)) }),
   })
   m.tique()
-  const texto = String(vs.chaves[M.CHAVE_DO_TEXTO] || '')
-  // V29: TODAS pelo nome, como o painel. Inteiro, o formato daria 83 caracteres (mais que
-  // o LIMITE_DA_LINHA), entao desce um degrau: sai o total processado de cada uma, o nome fica.
-  checar('11d. varias conversas: TODAS pelo nome, separadas por │, e a soma no fim',
-    texto.split('\n')[0] === 'Catálogo skills  $1.24  69.6k │ Outra  $0.76  30.4k │ $2.00  100k/1.5M', texto.split('\n')[0])
+  /*
+    ⚠️ V30 — A CHAVE LEVA JSON, E ISSO E O CONSERTO. Ate a V29 ia UM texto, escolhido aqui por um
+    limite de caracteres chutado contra uma largura que esta extensao nao ve. Agora vao TODOS os
+    degraus e os botoes; quem mede e escolhe e o nucleo (patch 0030), que sabe a largura.
+  */
+  const publicado = JSON.parse(String(vs.chaves[M.CHAVE_DO_TEXTO] || '{}'))
+  const degraus = publicado.degraus || []
+  const texto = String(degraus[0] || '')
+  checar('11d. o degrau mais completo: TODAS pelo nome INTEIRO, os DOIS numeros, e a soma no fim',
+    texto.split('\n')[0] === 'Catálogo skills  $1.24  69.6k/1.0M │ Outra  $0.76  30.4k/500k │ $2.00  100k/1.5M',
+    texto.split('\n')[0])
+  checar('11d-b. e os degraus saem do mais completo ao mais apertado, sem repetir',
+    degraus.length >= 3 && new Set(degraus.map(d => d.split('\n')[0])).size === degraus.length &&
+    degraus[0].split('\n')[0].length > degraus[degraus.length - 1].length,
+    `${degraus.length} degraus`)
+  checar('11d-c. so o PRIMEIRO carrega a dica (repeti-la em todos seria publicar ~9 KB a cada tique)',
+    degraus[0].includes('\n') && degraus.slice(1).every(d => !d.includes('\n')), String(degraus.length))
   checar('11d2. cabendo, vai o formato inteiro do painel',
-    M.linhaDasConversas([{ nome: 'A', resumo: resumoDe(1000, 2000, 1) }, { nome: 'B', resumo: resumoDe(3000, 4000, 2) }],
-      { custo: 3, contexto: 4000, tokens: 6000, marca: '' }) === 'A  $1.00  1.0k/2.0k │ B  $2.00  3.0k/4.0k │ $3.00  4.0k/6.0k')
+    M.degrausDasConversas([{ nome: 'A', resumo: resumoDe(1000, 2000, 1) }, { nome: 'B', resumo: resumoDe(3000, 4000, 2) }],
+      { custo: 3, contexto: 4000, tokens: 6000, marca: '' })[0] === 'A  $1.00  1.0k/2.0k │ B  $2.00  3.0k/4.0k │ $3.00  4.0k/6.0k')
   {
     const quatro = ['Hotmart pagamentos recalculado', 'V29 design inconsistências', 'teste', 'Catálogo de skills com auditoria']
       .map((nome, i) => ({ nome, resumo: resumoDe(197000 + i, 9300000 + i, 7.17 + i) }))
-    const l = M.linhaDasConversas(quatro, { custo: 40, contexto: 800000, tokens: 37000000, marca: '' })
-    checar('11d3. quatro conversas de nome comprido: cabe no limite e TODAS continuam com nome e custo',
-      l.length <= M.LIMITE_DA_LINHA && l.split(' │ ').length >= 4 &&
-      l.split(' │ ').slice(0, 4).every(p => /^[^$\s]/.test(p) && /\$\d/.test(p)), l)
+    const ds = M.degrausDasConversas(quatro, { custo: 40, contexto: 800000, tokens: 37000000, marca: '' })
+    // ⚠️ O QUE SE COBRA MUDOU, E DE PROPOSITO: antes era "cabe em N caracteres" (o chute). Agora e que
+    // o degrau mais completo NAO CORTA NADA — nome inteiro e os dois numeros — porque a linha propria
+    // tem espaco, e que exista uma escada ate um degrau bem curto para a janela estreita.
+    checar('11d3. quatro conversas de nome comprido: o degrau 0 traz o nome INTEIRO e os dois numeros',
+      quatro.every(c => ds[0].includes(c.nome)) && ds[0].split(' │ ').slice(0, 4).every(p => /\d+k\/\d/.test(p)), ds[0])
+    checar('11d4. e ha uma escada de verdade: o ultimo degrau e bem menor que o primeiro',
+      ds.length >= 4 && ds[ds.length - 1].length < ds[0].length * 0.6, `${ds[0].length} -> ${ds[ds.length - 1].length}`)
   }
+  checar('11d5. os BOTOES vao publicados junto (V30): expandir os tokens e o mapa dos agentes',
+    Array.isArray(publicado.botoes) && publicado.botoes.length === 2 &&
+    publicado.botoes[0].comando === 'oficina.tokens.abrir' && publicado.botoes[1].comando === 'oficina.agentes.mapa' &&
+    publicado.botoes.every(b => /^[a-z0-9-]+$/.test(b.icone)),
+    JSON.stringify(publicado.botoes))
   checar('11e. e a dica lista cada conversa, marcando a em uso',
     /▸ Catálogo skills: \$1\.24/.test(texto) && /  Outra: \$0\.76/.test(texto), texto)
 }
@@ -442,7 +481,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
       criarMedidor: t => ({ atualizar() { if (falha(t)) throw new Error('x') }, resumo: () => resumos[t] }),
     })
     m.tique()
-    return String(vs.chaves[M.CHAVE_DO_TEXTO] || '')
+    return String(saiu(vs) || '')
   }
   // 13a — a conversa NOVA em uso (sem arquivo ainda) ao lado de uma de $30: nada de "nenhuma conversa"
   const t = montarJanela({
@@ -499,6 +538,82 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
   const ext = fs.readFileSync(path.join(REPO, 'extensoes', 'oficina-claude', 'paisDosProcessos.js'), 'utf8')
   checar('12h. o PowerShell vem por caminho absoluto, com as duas barras (sem virar "C:Windows")',
     ext.includes("'C:\\\\Windows', 'System32', 'WindowsPowerShell'"), 'caminho do powershell')
+}
+
+// ── 14 ── V30: a conversa PARADA ha mais de 5 minutos sai da linha
+{
+  const S14 = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'sessaoAtiva.js'))
+  const reg = (pid, id) => ({ pid, sessionId: id, entrypoint: 'claude-vscode', cwd: 'd:/x', status: 'idle', updatedAt: 1 })
+  const sessoes = [reg(10, 'viva'), reg(11, 'parada'), reg(12, 'emuso')]
+  const pais = { 10: 500, 11: 500, 12: 500 }
+  const AGORA = 1_000_000_000
+  // `emuso` e a que trabalha; `viva` escreveu ha 1 min; `parada` ha 30 min.
+  const escritas = { viva: AGORA - 60_000, parada: AGORA - 30 * 60_000, emuso: AGORA - 10 * 60_000 }
+
+  const montar = extra => {
+    const vs = editorFalso()
+    const m = M.criarMostradorDeTokens(vs, {
+      agendar: () => 1, desagendar: () => { }, hostPid: 500,
+      pais: { atualizar() { }, paiDe: s => pais[s.pid] },
+      lerSessoes: () => sessoes,
+      listarDaJanela: (host, paiDe, ss) => ({ conversas: ss.filter(x => pais[x.pid] === host).map(x => ({ id: x.sessionId })), emUso: 'emuso' }),
+      acharTranscrito: id => `d:/c/${id}.jsonl`,
+      lerTitulo: t => (t.includes('viva') ? 'Conversa viva' : t.includes('parada') ? 'Conversa parada' : 'Em uso'),
+      criarMedidor: t => ({ atualizar() { }, resumo: () => resumoDe(1000, 2000, 1) }),
+      agora: () => AGORA,
+      escritaEm: id => escritas[id] ?? null,
+      ...extra,
+    })
+    m.tique()
+    return { vs, m }
+  }
+
+  const { vs } = montar()
+  const linha = saiu(vs).split('\n')[0]
+  checar('14a. a conversa parada ha 30 min SAI da linha', !/Conversa parada/.test(linha), linha)
+  checar('14b. a que escreveu ha 1 min FICA', /Conversa viva/.test(linha), linha)
+  checar('14c. e a EM USO fica, mesmo parada ha 10 min (ele pode estar lendo a resposta)',
+    /Em uso/.test(linha), linha)
+  checar('14d. a dica CONTA o que saiu, em vez de esconder calado',
+    /1 conversa parada há mais de 5 minutos não aparece/.test(saiu(vs)), saiu(vs).split('\n').slice(-3).join(' | '))
+
+  // ⚠️ O MEDIDOR DE QUEM SAIU NAO E JOGADO FORA: releria o arquivo inteiro ao voltar.
+  checar('14e. quem saiu da linha continua MEDIDO (o medidor nao e descartado)',
+    montar().m.conversas.includes('parada'), montar().m.conversas.join())
+
+  // Sem saber a hora, nao se esconde: a falha cai para o lado de mostrar.
+  const semHora = montar({ escritaEm: () => null })
+  checar('14f. transcrito que nao da para ler NAO esconde a conversa (falha para o lado de mostrar)',
+    /Conversa parada/.test(saiu(semHora.vs).split('\n')[0]), saiu(semHora.vs).split('\n')[0])
+
+  checar('14g. o limite e o que ele pediu: 5 minutos', M.INATIVA_MS === 5 * 60 * 1000, String(M.INATIVA_MS))
+}
+
+// ── 15 ── V30: o mapa dos agentes (o pop-up da faixa)
+{
+  const MAPA = requerer(path.join(REPO, 'extensoes', 'oficina-claude', 'mapaDosAgentes.js'))
+  const vazio = MAPA.montarMapaDaJanela([{ id: 'c1', nome: 'sem agentes', subagentes: [] }])
+  checar('15a. conversa sem agente nenhum nao vira secao no mapa', vazio.length === 0, JSON.stringify(vazio))
+  checar('15b. e a TELA vazia diz o que e, em vez de ficar em branco (o botao existe sempre)',
+    MAPA.htmlDoMapa(vazio).includes(MAPA.SEM_AGENTES), 'estado vazio')
+
+  const mapas = MAPA.montarMapaDaJanela([{
+    id: 'c1', nome: 'Comparar pagamentos', emUso: true, contexto: 1000, subagentes: [
+      { id: 'a1', nome: 'revisor', tipo: 'general-purpose', tokensNoFim: 120000, inicioMs: 1000, fimMs: 95000, ferramentas: 12 },
+      { id: 'a2', nome: 'filho do revisor', tipo: 'Explore', pai: 'a1', tokensNoFim: 30000, inicioMs: 2000, fimMs: 40000 },
+    ],
+  }])
+  checar('15c. os agentes da conversa entram no mapa', mapas.length === 1 && mapas[0].quantos === 2, JSON.stringify(mapas.map(m => m.quantos)))
+  const html = MAPA.htmlDoMapa(mapas)
+  checar('15d. a ARVORE e desenhada: o filho fica DENTRO do ramo do pai (o "bloco derivando")',
+    /revisor[\s\S]*?mapa-ramos[\s\S]*?filho do revisor/.test(html), 'arvore')
+  checar('15e. o nome do agente e ESCAPADO (ele vem de fora, e vai para dentro de HTML)',
+    MAPA.htmlDoMapa(MAPA.montarMapaDaJanela([{ id: 'c', nome: 'x', subagentes: [{ id: 'a', nome: '<script>alerta()</script>' }] }]))
+      .includes('&lt;script&gt;') === true, 'escapado')
+  checar('15f. a tela DIZ que o instante nao esta ali (a fonte e o disco), em vez de deixar supor',
+    html.includes('NESTE instante'), 'ressalva presente')
+  checar('15g. duracao em palavra de gente', MAPA.duracaoCurta(94000) === '1min 34s' && MAPA.duracaoCurta(45000) === '45s',
+    MAPA.duracaoCurta(94000))
 }
 
 const falhas = resultados.filter(r => !r.ok)

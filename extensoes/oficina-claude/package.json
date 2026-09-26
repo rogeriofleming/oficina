@@ -310,9 +310,8 @@
       },
       {
         "command": "oficina.tokensNaBarra",
-        "title": "Tokens da conversa (na barra de cima)",
-        "category": "OFICINA",
-        "shortTitle": "${oficina.tokens}"
+        "title": "Detalhe dos tokens da conversa",
+        "category": "OFICINA"
       },
       {
         "command": "oficina.skills.abrir",
@@ -461,6 +460,18 @@
         "title": "Celular e computador lado a lado (o celular é imitação: motor do Chrome)",
         "category": "OFICINA",
         "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "oficina.conversa.renomear",
+        "title": "Renomear a conversa",
+        "category": "OFICINA",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "oficina.agentes.mapa",
+        "title": "Mapa dos agentes",
+        "category": "OFICINA",
+        "icon": "$(type-hierarchy-sub)"
       }
     ],
     "menus": {
@@ -501,11 +512,11 @@
           "group": "navigation"
         }
       ],
-      "titleBar": [
+      "editor/title/context": [
         {
-          "command": "oficina.tokensNaBarra",
-          "when": "titleBarLiveLabel && oficina.tokens.aMostrar",
-          "group": "navigation@1"
+          "command": "oficina.conversa.renomear",
+          "when": "activeWebviewPanelId == 'claudeVSCodePanel'",
+          "group": "1_open@1"
         }
       ],
       "help": [

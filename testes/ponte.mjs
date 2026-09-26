@@ -1686,13 +1686,43 @@ checar('a tela recebe o ouvinte de mensagens', typeof aoReceberDaTela === 'funct
     O limite não sumiu do produto: virou a FAIXA de medidores (t199, patch 0017), com barra que
     enche, que é onde ele pediu que ficasse.
   */
-  checar('⛔ V11/V20: a barra de cima tem exatamente o item autorizado, e só ele',
-    manifesto.contributes.menus.titleBar.map(m => m.command).join() === 'oficina.tokensNaBarra',
-    manifesto.contributes.menus.titleBar.map(m => m.command).join())
+  /*
+    ⚠️ V30 — A BARRA DE CIMA FICOU SEM ITEM NOSSO, E ISSO É O CONSERTO, NÃO UMA PERDA.
+
+    O mostrador de tokens morava aqui desde o t196. Medido em 26/09/2026: o núcleo limita o rótulo a
+    `30vw` (413 px na tela dele) e o texto com DUAS conversas já pede 511 px — então metade dos
+    números (o total processado) saía da linha e os nomes eram cortados. Ordem dele: *"o painel de
+    tokens ele vai ficar numa segunda linha abaixo"*. Ele agora é desenhado pela FAIXA (patch 0030),
+    e o que a barra de cima ganhou no lugar foram os medidores maiores e a pesquisa de volta ao
+    tamanho de gente.
+  */
+  const naBarraDeCima = (manifesto.contributes.menus.titleBar || []).map(m => m.command)
+  checar('⛔ V30: a barra de cima não tem mais contribuição nossa (o rótulo mudou-se para a faixa)',
+    naBarraDeCima.length === 0, naBarraDeCima.join() || 'nenhuma')
+  /*
+    V30 — RENOMEAR A CONVERSA PELO MENU DA ABA.
+
+    Ele, 26/09/2026: *"Que merda é essa que eu não consigo renomear o nome de uma sessão do Claude?"*,
+    com o print do menu da aba. O comando da extensão oficial existe (`claude-vscode.renameSessionTab`)
+    e está só em `webview/context` e na paleta — o menu da ABA não é um deles. A OFICINA contribui o
+    seu próprio item ali e faz a ponte.
+
+    ⚠️ A PONTE TEM DE PERGUNTAR ANTES DE CHAMAR. Nome de comando de terceiro envelhece: foi o `/logout`
+    da V26 (regra 31). Sem a pergunta, o item existiria e não faria nada — calado.
+  */
+  {
+    const naAba = (manifesto.contributes.menus['editor/title/context'] || [])
+    const oItem = naAba.find(m => m.command === 'oficina.conversa.renomear')
+    checar('⛔ V30: o menu da ABA oferece o renomear, e só quando a conversa está em foco',
+      !!oItem && /activeWebviewPanelId == 'claudeVSCodePanel'/.test(String(oItem.when)), JSON.stringify(naAba))
+    const R = requererPonteDoLimite(path.join(REPO, 'extensoes', 'oficina-claude', 'renomearConversa.js'))
+    checar('⛔ V30: a ponte chama o comando da extensão OFICIAL, e não reimplementa o renomear',
+      R.COMANDO_OFICIAL === 'claude-vscode.renameSessionTab', R.COMANDO_OFICIAL)
+  }
   checar('⛔ V20: os três botões da V11 saíram da barra (t188), mas os comandos continuam existindo',
-    !manifesto.contributes.menus.titleBar.some(m => ['oficina.abrirArquivos', 'oficina.abrirConversa', 'oficina.layout'].includes(m.command)) &&
+    !naBarraDeCima.some(c => ['oficina.abrirArquivos', 'oficina.abrirConversa', 'oficina.layout'].includes(c)) &&
     ['oficina.abrirArquivos', 'oficina.abrirConversa', 'oficina.layout'].every(c => registro.comandos.has(c)),
-    manifesto.contributes.menus.titleBar.map(m => m.command).join())
+    naBarraDeCima.join())
   /*
     V19 — O MOSTRADOR DO LIMITE: a costura entre o manifesto e o patch do núcleo.
 
@@ -1706,7 +1736,10 @@ checar('a tela recebe o ouvinte de mensagens', typeof aoReceberDaTela === 'funct
     // mesma do patch 0016, e continua falhando em silêncio se os nomes divergirem — por isso os
     // critérios abaixo trocaram de ALVO, não de rigor.
     const doTokens = (manifesto.contributes.commands || []).find(c => c.command === 'oficina.tokensNaBarra')
-    const naBarra = manifesto.contributes.menus.titleBar.find(m => m.command === 'oficina.tokensNaBarra')
+    // ⚠️ V30: a costura trocou de ALVO, não de rigor. Quem pede o texto agora é o PRODUTO
+    // (`bannerLiveLabelContextKey`), lido pela faixa (patch 0030) — e continua falhando em silêncio
+    // se os nomes divergirem: chave errada = faixa vazia, sem erro nenhum.
+    const produtoDaFaixa = JSON.parse(fsDaPonte.readFileSync(path.join(REPO, 'produto', 'product.json'), 'utf8'))
     // ⚠️ DECLARADO **E** REGISTRADO. A V19 cobrava as duas coisas para o item do limite; a primeira
     // versão da V20 trocou por um critério que só olhava o manifesto — e o comando ficou declarado
     // em três lugares sem nenhum `registerCommand`. Clicar no item daria "command not found", e
@@ -1722,33 +1755,45 @@ checar('a tela recebe o ouvinte de mensagens', typeof aoReceberDaTela === 'funct
       checar('⛔ V20: todo comando declarado no manifesto está registrado na extensão',
         semRegistro.length === 0, semRegistro.join(', ') || 'nenhum faltando')
     }
-    checar('⛔ V20: o texto vivo mora no título CURTO — o título é nome de gente, para a paleta e os atalhos',
-      !!doTokens && /\$\{/.test(String(doTokens.shortTitle || '')) && !/\$\{/.test(String(doTokens.title || '')),
+    // ⚠️ V30: o texto não sai mais do título do item (aquilo era o mecanismo da BARRA, patch 0016).
+    // Na faixa o texto vem direto da context key, e o comando só responde ao clique — por isso o que
+    // se cobra agora é que ele tenha um título de GENTE, legível na paleta.
+    checar('⛔ V30: o comando do mostrador tem título legível, sem interpolação de chave',
+      !!doTokens && !/\$\{/.test(String(doTokens.title || '')) && !/\$\{/.test(String(doTokens.shortTitle || '')),
       JSON.stringify(doTokens))
-    checar('⛔ V20: o item NÃO tem ícone — com ícone o editor desenha o ícone e o texto some',
-      !!doTokens && !doTokens.icon, JSON.stringify(doTokens && doTokens.icon))
     checar('⛔ V20: o mostrador não polui a paleta (quem abre a vista é `oficina.tokens.abrir`)',
       (manifesto.contributes.menus.commandPalette || []).some(m => m.command === 'oficina.tokensNaBarra' && m.when === 'false'))
     // ⚠️ E O LIMITE SAIU DA BARRA: o comando continua, sem título vivo, porque agora ele ABRE o
     // detalhe do consumo em vez de desenhar número na barra (t188 + t199).
     const doLimite = (manifesto.contributes.commands || []).find(c => c.command === 'oficina.limite')
     checar('⛔ V20: o limite não tem mais título vivo, e não está na barra (ordem dele no t188)',
-      !!doLimite && !doLimite.shortTitle && !manifesto.contributes.menus.titleBar.some(m => m.command === 'oficina.limite'),
+      !!doLimite && !doLimite.shortTitle && !(manifesto.contributes.menus.titleBar || []).some(m => m.command === 'oficina.limite'),
       JSON.stringify(doLimite))
     // Guarda: sem o patch, estes critérios têm de ficar VERMELHOS, não derrubar a suíte inteira.
     let patch = ''
     try { patch = fsDaPonte.readFileSync(path.join(REPO, 'patches', '0016-barra-de-titulo-aceita-rotulo-vivo.patch'), 'utf8') } catch { patch = '' }
-    const doPatch = (patch.match(/OFICINA_ROTULO_VIVO = '([^']+)'/) || [])[1] || null
-    const doWhen = (String(naBarra && naBarra.when).match(/^([A-Za-z][A-Za-z0-9_]*)/) || [])[1] || null
-    checar('⛔ V20: a chave que o editor cria e a que o manifesto pede no `when` são a MESMA',
-      !!doPatch && doPatch === doWhen, `patch: ${doPatch} · manifesto: ${doWhen}`)
-    checar('⛔ V20: o item só aparece quando o editor sabe desenhar texto vivo E há o que mostrar',
-      !!naBarra && naBarra.when === 'titleBarLiveLabel && oficina.tokens.aMostrar', String(naBarra && naBarra.when))
     const mostrador = requererPonteDoLimite(path.join(REPO, 'extensoes', 'oficina-claude', 'mostradorDeTokens.js'))
-    checar('⛔ V20: a chave que o mostrador escreve é a que o manifesto lê (um nome só, dos dois lados)',
-      mostrador.CHAVE_DO_TEXTO === 'oficina.tokens' && `titleBarLiveLabel && ${mostrador.CHAVE_DE_MOSTRAR}` === String(naBarra && naBarra.when),
-      `${mostrador.CHAVE_DO_TEXTO} / ${mostrador.CHAVE_DE_MOSTRAR}`)
-    checar('V19: o patch toca a barra de título do editor, e só ela',
+    checar('⛔ V30: a chave que o mostrador ESCREVE é a que o produto manda a faixa LER (um nome só)',
+      produtoDaFaixa.bannerLiveLabelContextKey === mostrador.CHAVE_DO_TEXTO,
+      `produto: ${produtoDaFaixa.bannerLiveLabelContextKey} · mostrador: ${mostrador.CHAVE_DO_TEXTO}`)
+    checar('⛔ V30: o comando do clique na faixa existe no manifesto E está registrado',
+      !!produtoDaFaixa.bannerLiveLabelCommand &&
+      (manifesto.contributes.commands || []).some(c => c.command === produtoDaFaixa.bannerLiveLabelCommand) &&
+      registro.comandos.has(produtoDaFaixa.bannerLiveLabelCommand),
+      String(produtoDaFaixa.bannerLiveLabelCommand))
+    {
+      // O patch 0030 tem de LER a chave que o produto nomeia — um patch que não a lê deixa a faixa
+      // muda, e nada fica vermelho.
+      let p30 = ''
+      try { p30 = fsDaPonte.readFileSync(path.join(REPO, 'patches', '0030-painel-de-tokens-em-linha-propria.patch'), 'utf8') } catch { p30 = '' }
+      checar('⛔ V30: o patch da faixa lê `bannerLiveLabelContextKey` do produto',
+        /bannerLiveLabelContextKey/.test(p30) && /productService\.bannerLiveLabelContextKey/.test(p30),
+        p30 ? 'patch lido' : 'patch 0030 não encontrado')
+      checar('⛔ V30: e o nome da chave NÃO está escrito dentro do patch (o núcleo não sabe o que ela mede)',
+        !!p30 && !/oficina\.tokens/.test(p30.split('\n').filter(l => l.startsWith('+')).join('\n')),
+        'o patch é genérico')
+    }
+    checar('V19: o patch 0016 toca a barra de título do editor, e só ela',
       /\+\+\+ b\/src\/vs\/workbench\/browser\/parts\/titlebar\/titlebarPart\.ts/.test(patch) &&
       (patch.match(/^\+\+\+ b\//gm) || []).length === 1,
       String((patch.match(/^\+\+\+ b\//gm) || []).length) + ' arquivo(s)')
@@ -1785,8 +1830,8 @@ checar('a tela recebe o ouvinte de mensagens', typeof aoReceberDaTela === 'funct
   // de tokens entrou (t196). O que continua valendo é a parte que nunca foi negociada — a vista de
   // SKILLS não vira botão na barra de cima; ela mora na barra lateral.
   checar('e a barra de cima não ganhou a vista de Skills',
-    !manifesto.contributes.menus.titleBar.some(m => /skills/.test(m.command)),
-    manifesto.contributes.menus.titleBar.map(m => m.command).join())
+    !(manifesto.contributes.menus.titleBar || []).some(m => /skills/.test(m.command)),
+    (manifesto.contributes.menus.titleBar || []).map(m => m.command).join() || 'barra sem contribuição')
   // O núcleo tem um botão próprio na barra de cima: o globo do navegador integrado ("Browser"), que aparece
   // sozinho enquanto houver uma página aberta nele. A barra de cima tem composição definida pelo dono ("…só
   // isso") e o globo não está nela. A porta do navegador é o comando "Navegador" da paleta (e o atalho do núcleo).
@@ -2016,10 +2061,10 @@ checar('a tela recebe o ouvinte de mensagens', typeof aoReceberDaTela === 'funct
     (manifesto.contributes.viewsContainers.activitybar || []).some(c => c.id === 'oficinaTokens')
     && !(soltos || []).includes('workbench.view.extension.oficinaTokens'),
     JSON.stringify((manifesto.contributes.viewsContainers.activitybar || []).map(c => c.id)))
-  checar('⛔ V20: e os números foram para a barra de cima, não sumiram (t196)',
-    manifesto.contributes.menus.titleBar.some(m => m.command === 'oficina.tokensNaBarra') &&
+  checar('⛔ V30: e os números não sumiram — foram para a FAIXA, e a vista continua alcançável',
+    JSON.parse(fsDaPonte.readFileSync(path.join(REPO, 'produto', 'product.json'), 'utf8')).bannerLiveLabelContextKey === 'oficina.tokens' &&
     (manifesto.contributes.commands || []).some(c => c.command === 'oficina.tokens.abrir'),
-    manifesto.contributes.menus.titleBar.map(m => m.command).join())
+    'faixa + oficina.tokens.abrir')
   checar('V13: todo contêiner nosso na lista existe no manifesto', nossosNaLista.length > 0 && nossosNaLista.every(id => nossos.includes(id)), nossosNaLista.join(', '))
   // A chave do produto é a mesma que o núcleo declara (0001) e lê (0012): um nome trocado de um lado só
   // compila, mescla e abre com os sete ícones — sem erro nenhum.

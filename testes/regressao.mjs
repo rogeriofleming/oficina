@@ -1002,7 +1002,7 @@ const SESSAO_ATIVA = 20
 const PASTA_DE_SEMPRE = 24 // V27: sem pasta, nada de conversa automatica; abre a pasta de sempre ou pergunta
 const VER_HTML = 24 // V27: as duas opcoes de um .html -- ver a pagina e ver o codigo · +4: os leitores de documento embutidos (1b) · +4: celular e computador lado a lado (1c)
 const EXTENSOES_QUE_FALTAM = 21 // V27: a primeira abertura instala o que falta (Claude Code primeiro)
-const MOSTRADOR_DE_TOKENS = 52 // V29: 50 -> 52, todas as conversas pelo nome e os degraus quando nao cabe · V24: 20 -> 23, os tres estados do mostrador (numeros, vazio, falhou) · V26-B2: 23 -> 26, sem pasta aberta procura na pasta pessoal · V27: 26 -> 42, formato do painel, conversas da janela pelo processo pai, aviso sem pasta
+const MOSTRADOR_DE_TOKENS = 70 // V30: 52 -> 70, os degraus publicados em lista, o corte por inatividade (bloco 14) e o mapa dos agentes (bloco 15) · V29: 50 -> 52, todas as conversas pelo nome e os degraus quando nao cabe · V24: 20 -> 23, os tres estados do mostrador (numeros, vazio, falhou) · V26-B2: 23 -> 26, sem pasta aberta procura na pasta pessoal · V27: 26 -> 42, formato do painel, conversas da janela pelo processo pai, aviso sem pasta
 const TELA_DO_CONSUMO = 15
 const AJUSTES_DA_OFICIAL = 38 // V29: +3, a ancora aria-label do cabecalho (2) e o nome-base header_ (1) · V21: +8 (ancoras [class*=] e a derivacao dos modos)
 // Pisos da V26 (24/09/2026): os MCPs e a conta — o estado de uma ferramenta de TERCEIRO, que e o
@@ -1267,7 +1267,7 @@ const semComentarios = arquivo =>
   // mostrador do limite; t196 pos o de tokens), a barra secundaria deixou de nascer aberta (t197), a
   // lateral foi para o topo (t198) e o limite virou a FAIXA de medidores (t199) -- cujo fio inteiro,
   // do arquivo no disco ate a chave que o nucleo le, passou a ter criterio proprio.
-  const PONTE = 306 // V24: +3 no total, os criterios de forcarConversaNoCentro e o fechamento da barra da direita
+  const PONTE = 308 // V30: 306 -> 308, a costura do rotulo na faixa e o renomear no menu da aba · V24: +3 no total, os criterios de forcarConversaNoCentro e o fechamento da barra da direita
   checar('V2', 'a ponte: nenhum criterio sumiu', !!placar && placar.total === PONTE,
     placar ? `${placar.total} (esperado ${PONTE})` : 'sem placar')
 }

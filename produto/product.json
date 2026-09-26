@@ -39,6 +39,8 @@
   "hideActivityBarGlobalActions": true,
   "bannerGaugesContextKey": "oficina.faixa",
   "titleBarGauges": true,
+  "bannerLiveLabelContextKey": "oficina.tokens",
+  "bannerLiveLabelCommand": "oficina.tokens.abrir",
   "trustedExtensionPublishers": ["anthropic", "ms-python", "detachhead", "ms-vscode", "github", "mechatroner"],
   "activityBarInTitleBar": true,
   "editorTitleActionsToHide": [

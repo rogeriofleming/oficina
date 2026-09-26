@@ -48,6 +48,41 @@ const R = require('./relogioCache')
 const TIT = require('./tituloDaConversa')
 const P = require('./paisDosProcessos')
 
+/**
+ * Quanto tempo uma conversa pode ficar PARADA antes de sair da linha (V30).
+ *
+ * Ordem dele, 26/09/2026: *"depois de 5 minutos de uma conversa estar inativa ele tira aquela
+ * conversa do mostrador do painel"*.
+ *
+ * ⚠️ "PARADA" É A ÚLTIMA ESCRITA NO ARQUIVO DA CONVERSA, e não o `updatedAt` do registro de sessões.
+ * O motivo está medido em `sessaoAtiva.js`: o registro de uma sessão ficou 20 minutos sem ser
+ * reescrito ENQUANTO ela trabalhava. Quem é escrito a cada turno é o transcrito.
+ *
+ * ⚠️ NÃO SE APAGA O MEDIDOR de quem sai da linha, só se deixa de desenhá-la. O medidor é incremental
+ * (lê só o que cresceu); jogá-lo fora faria a conversa ser relida INTEIRA — dezenas de MB — toda vez
+ * que ela voltasse a ser usada.
+ */
+const INATIVA_MS = 5 * 60 * 1000
+
+/**
+ * Os botões que a faixa desenha ao lado do painel (V30, pedido dele em 26/09/2026): *"pode ter um
+ * botãozinho para expandir as informações de tokens da conversa (...) e também pode ter o botão do
+ * mapa de agentes"*.
+ *
+ * ⚠️ ELES EXISTEM SEMPRE, mesmo sem conversa e sem agente — decisão dele, na mesma conversa: *"se
+ * não tiver nenhuma conversa rodando e também não tiver nenhum subagente ligado (...) não vai
+ * mostrar nada, né? Mas ele existe"*. Isso INVERTE, só nesta linha, a regra de 24/09 ("onde não há o
+ * que fazer, não há botão"): um botão que some não ensina ninguém onde a coisa mora. Quem abre um
+ * vazio é avisado por QUEM ABRE, nunca pelo botão desaparecer.
+ *
+ * ⚠️ O ÍCONE É UM NOME DE CODICON, e o núcleo recusa qualquer coisa que não seja
+ * `[a-z0-9-]+` — o que vai daqui vira classe de CSS lá.
+ */
+const BOTOES_DA_FAIXA = [
+  { comando: 'oficina.tokens.abrir', icone: 'graph', dica: 'Detalhe dos tokens: modelos, subagentes e skills' },
+  { comando: 'oficina.agentes.mapa', icone: 'type-hierarchy-sub', dica: 'Mapa dos agentes desta janela' },
+]
+
 /** As chaves que a barra de cima lê — as mesmas duas do patch 0016 (texto vivo e sim/não). */
 const CHAVE_DO_TEXTO = 'oficina.tokens'
 const CHAVE_DE_MOSTRAR = 'oficina.tokens.aMostrar'
@@ -117,16 +152,22 @@ function nomeCurto(n, teto = 20) {
   return (saida || base.slice(0, teto - 1)) + '…'
 }
 
-/**
- * Quantos caracteres cabem no contador da barra de cima, na tela dele (V29).
- *
- * ⚠️ MEDIDO, e filho de uma condição: o núcleo limita o rótulo a `30vw` (patch 0023) — 413 px na
- * tela dele, de 1360 px — e a conta do 0028 tira os limites da barra de cima quando o rótulo pede
- * mais do que isso. No print dele, `$0.07 48.1k/96.2k` (17 caracteres) ocupou 85 px: ~5 px por
- * caractere. 78 caracteres ficam abaixo dos 413 px com folga para nome com letra larga. Mudou o
- * teto do 0023 ou a tela, este número envelhece.
- */
-const LIMITE_DA_LINHA = 78
+/*
+ ⚠️ O LIMITE POR CARACTERES MORREU NA V30 — e a morte dele é o conserto.
+
+ Até a V29 havia aqui um `LIMITE_DA_LINHA = 78`: quantos caracteres eu ACHAVA que caberiam, contados
+ contra uma largura que este arquivo não pode ver (o teto de `30vw` do patch 0023, 413 px na tela
+ dele). Um palpite desses erra dos dois lados e envelhece sozinho — e foi o que ele viu: *"está
+ escondendo a informação de metade do token (...) corta o nome das conversas"*. Medido em
+ 26/09/2026: com DUAS conversas o texto já pede 511 px contra 413 de teto, e aí o degrau 2 tirava o
+ total processado de toda a linha.
+
+ Agora a divisão é outra, e cada lado fica com o que ele sabe: **este arquivo publica TODOS os
+ degraus**, do mais completo ao mais apertado (a política: o que cede primeiro é o total processado,
+ depois a soma, e o nome é o último), e **o núcleo mede e escolhe** o mais completo que couber na
+ largura real (patch 0030, `oficinaRotuloVivo.ts`). Nenhum dos dois precisa saber a metade do outro,
+ e não há número para envelhecer.
+*/
 
 /**
  * Os degraus, do formato inteiro do painel ao mais apertado. O NOME é o último a ceder: foi o que
@@ -141,6 +182,12 @@ const LIMITE_DA_LINHA = 78
 // o custo de cada uma, sem tamanho e sem soma. Para caber mais, o espaço tem de vir de outro lugar
 // da barra (medidores, pesquisa): decisão dele, não deste arquivo.
 const DEGRAUS = [
+  // ⚠️ V30 — O PRIMEIRO DEGRAU NÃO CORTA O NOME. Até a V29 o degrau mais completo já entrava com
+  // teto de 20 caracteres, porque na barra de cima nunca houve espaço para mais: `Comparar
+  // pagamentos Hotmart` saía `Comparar pagamentos…` mesmo no melhor caso. Com a linha própria
+  // (~1350 px) o nome inteiro cabe, e ele pediu o nome — este degrau existe para que o caso bom
+  // seja de fato o caso bom.
+  { teto: Infinity, porItem: 'ambos', total: 'ambos' },
   { teto: 20, porItem: 'ambos', total: 'ambos' },
   { teto: 20, porItem: 'contexto', total: 'ambos' },
   { teto: 20, porItem: 'contexto', total: 'custo' },
@@ -153,13 +200,17 @@ const DEGRAUS = [
 ]
 
 /**
- * A linha com TODAS as conversas da janela, como o painel flutuante: cada uma com nome, custo e
- * tamanho, separadas por ` │ `, e a soma no fim. O separador e os dois espaços entre as partes são
- * o contrato com o núcleo (patch 0029), que colore cada parte pelo formato.
+ * Os DEGRAUS da linha com todas as conversas da janela, do mais completo ao mais apertado — como o
+ * painel flutuante: cada conversa com nome, custo e tamanho, separadas por ` │ `, e a soma no fim.
+ * O separador e os dois espaços entre as partes são o contrato com o núcleo (patch 0029), que
+ * colore cada parte pelo formato; a lista é o contrato com o patch 0030, que escolhe qual cabe.
+ *
+ * ⚠️ DEDUPLICADO, E ISSO IMPORTA. Com uma conversa só de nome curto, vários degraus produzem o
+ * texto idêntico, e o núcleo mediria o mesmo texto nove vezes a cada layout para nada.
  *
  * `itens`: [{ nome, resumo, falhou }], na ordem da janela (estável: não pula quando se troca de aba).
  */
-function linhaDasConversas(itens, soma) {
+function degrausDasConversas(itens, soma) {
   const montar = d => {
     const partes = itens.map(({ nome, resumo, falhou }) => {
       const n = nome ? nomeCurto(nome, d.teto) : null
@@ -173,12 +224,16 @@ function linhaDasConversas(itens, soma) {
       (d.total === 'ambos' ? `  ${tokens(soma.contexto)}/${tokens(soma.tokens)}` : '')
     return [...partes, total].join(' │ ')
   }
+  const vistos = new Set()
+  const degraus = []
   for (const d of DEGRAUS) {
     const linha = montar(d)
-    if (linha.length <= LIMITE_DA_LINHA) return linha
+    if (vistos.has(linha)) continue
+    vistos.add(linha)
+    degraus.push(linha)
   }
-  // Nem o degrau mais apertado coube: vai ele, e o núcleo corta com `…` (a dica tem tudo).
-  return montar(DEGRAUS[DEGRAUS.length - 1])
+  // Nem o mais apertado cabendo, o núcleo desenha o último e corta com `…` — e a dica tem tudo.
+  return degraus
 }
 
 /** Custo como o painel, com `+` só quando falta preço de algum modelo (número incompleto). */
@@ -223,6 +278,10 @@ function criarMostradorDeTokens(vscode, {
   pais = hostPid ? P.criarPaisDosProcessos() : null,
   lerSessoes = () => S.lerTodas(),
   listarDaJanela = (host, paiDe, sessoes) => S.conversasDaJanela(host, paiDe, { sessoes }),
+  /** Quando o arquivo da conversa foi escrito pela última vez (ms), ou `null` se não dá para saber. */
+  escritaEm = S.escritaDoTranscrito,
+  /** O relógio, injetável — sem isto, provar "passou dos 5 minutos" custaria 5 minutos de teste. */
+  agora = Date.now,
 } = {}) {
   /** id → { transcrito, medidor, falhou, resumo } — uma entrada por conversa desta janela. */
   const medidas = new Map()
@@ -307,9 +366,38 @@ function criarMostradorDeTokens(vscode, {
   }
 
   /**
+   * As conversas que a linha DESENHA: as que trabalharam nos últimos `INATIVA_MS`.
+   *
+   * ⚠️ A CONVERSA EM USO NUNCA SAI, e esta exceção é decisão minha, declarada. Ele pediu para tirar a
+   * conversa parada; ler uma resposta longa por seis minutos sem escrever nada TAMBÉM é ficar parado,
+   * e sem esta linha a conversa que ele está olhando sumiria da tela — com uma conversa só aberta, o
+   * mostrador cairia no estado "nenhuma conversa aberta", que seria falso. O que ele quer fora são as
+   * abandonadas, não a da frente dele.
+   *
+   * ⚠️ SEM SABER A HORA, NÃO SE ESCONDE. Transcrito que não dá para ler devolve `null`, e aí a
+   * conversa FICA: a falha tem de cair para o lado de mostrar a mais, nunca para o de esconder um
+   * gasto que existe.
+   */
+  function peneirarAsParadas() {
+    const limite = agora() - INATIVA_MS
+    const vivas = conversas.filter(id => {
+      if (id === emUso) return true
+      let quando = null
+      try { quando = escritaEm(id) } catch { quando = null }
+      if (typeof quando !== 'number') return true
+      return quando >= limite
+    })
+    // Não sobrou nenhuma: desenha todas, em vez de afirmar que não há conversa.
+    return vivas.length ? vivas : conversas
+  }
+
+  /**
    * O que a barra desenha: a primeira linha é o que se lê; o resto é a dica do mouse (patch 0016).
    */
   function montarTexto() {
+    // V30: `aMostrar` é o que se desenha; `conversas` continua sendo TUDO que se mede.
+    const aMostrar = peneirarAsParadas()
+    const paradas = conversas.length - aMostrar.length
     // V29: o nome vem do MEDIDOR, que lê o arquivo inteiro e aplica a regra do painel (o
     // título dado, o automático, o último pedido, o começo do id). Antes vinha só do `ai-title`, e
     // conversa sem título ("teste") aparecia sem nome. `lerTitulo` fica como piso.
@@ -319,10 +407,10 @@ function criarMostradorDeTokens(vscode, {
       const doMedidor = x.medidor && typeof x.medidor.nome === 'string' ? x.medidor.nome : null
       return doMedidor || (x.transcrito ? lerTitulo(x.transcrito) : null)
     }
-    const sem = semPasta() && conversas.length ? AVISO_SEM_PASTA + '  ' : ''
+    const sem = semPasta() && aMostrar.length ? AVISO_SEM_PASTA + '  ' : ''
 
     // Nenhuma conversa nesta janela: o estado vazio do t202 ("um risquinho e zero tokens").
-    if (!conversas.length) {
+    if (!aMostrar.length) {
       return `${SEM_CONVERSA}\n${[
         'Tokens: nenhuma conversa aberta nesta janela agora.',
         'O contador fica na barra o tempo todo; ele se enche quando uma conversa começar.',
@@ -330,10 +418,10 @@ function criarMostradorDeTokens(vscode, {
       ].join('\n')}`
     }
 
-    const principal = emUso && conversas.includes(emUso) ? emUso : conversas[0]
+    const principal = emUso && aMostrar.includes(emUso) ? emUso : aMostrar[0]
     const m = medidas.get(principal)
-    const outras = conversas.filter(id => id !== principal)
-    const medidas_ = conversas.map(id => medidas.get(id)).filter(x => x && x.resumo)
+    const outras = aMostrar.filter(id => id !== principal)
+    const medidas_ = aMostrar.map(id => medidas.get(id)).filter(x => x && x.resumo)
 
     /*
       ⚠️ NADA MEDIDO AINDA — e isto é diferente de "nenhuma conversa" (achado de revisão, 25/09/2026).
@@ -343,7 +431,7 @@ function criarMostradorDeTokens(vscode, {
       certa; há ALGUMA medida → ela aparece.
     */
     if (!medidas_.length) {
-      const falhou = conversas.some(id => { const x = medidas.get(id); return x && x.falhou })
+      const falhou = aMostrar.some(id => { const x = medidas.get(id); return x && x.falhou })
       const dica = falhou ? [
         'Tokens: há uma conversa, mas a medição falhou nesta passada.',
         'O ? está no lugar do número de propósito: dizer 0 seria afirmar que nada foi processado,',
@@ -357,6 +445,8 @@ function criarMostradorDeTokens(vscode, {
     }
 
     const nomePrincipal = nomeDe(principal)
+    // V30: `degraus` fica nulo com uma conversa so — ai a lista tem um item, montado no fim.
+    let degraus = null
     let linha = m && m.resumo
       ? itemDoPainel(nomePrincipal, m.resumo)
       // A conversa em uso ainda sem número (acabou de nascer, ou falhou): o nome e um marcador honesto.
@@ -372,15 +462,16 @@ function criarMostradorDeTokens(vscode, {
       }), { custo: 0, contexto: 0, tokens: 0 })
       // O total marca o que ele NÃO soma: `?` se alguma conversa falhou na medição; `+` se falta preço
       // em alguma (a soma do custo está incompleta).
-      const algumaFalhou = conversas.some(id => { const x = medidas.get(id); return x && x.falhou })
+      const algumaFalhou = aMostrar.some(id => { const x = medidas.get(id); return x && x.falhou })
       const faltaPreco = medidas_.some(x => x.resumo.faltouPreco || x.resumo.custoUsd == null)
       const marca = algumaFalhou ? '?' : faltaPreco ? '+' : ''
       // V29: TODAS pelo nome, como o painel — antes era a em uso e `+N`. Ele: *"e se eu
       // tiver com quatro sessões abertas? (...) tem que ter o nome da sessão junto do lado"*.
-      linha = linhaDasConversas(conversas.map(id => {
+      degraus = degrausDasConversas(aMostrar.map(id => {
         const x = medidas.get(id)
         return { nome: nomeDe(id), resumo: x && x.resumo, falhou: !!(x && x.falhou) }
       }), { ...soma, marca })
+      linha = degraus[0]
     }
     /*
       ⚠️ V27: O RELÓGIO DO CACHE SAIU DA LINHA (continua na dica do mouse). Ordem dele, 25/09/2026:
@@ -390,7 +481,7 @@ function criarMostradorDeTokens(vscode, {
       quando a conversa era o painel próprio, que tinha o relógio no pé; o pé do painel próprio continua
       com o dele.
     */
-    const porConversa = conversas.map(id => {
+    const porConversa = aMostrar.map(id => {
       const x = medidas.get(id)
       const nome = nomeDe(id) || 'conversa sem nome'
       const marca = id === principal && outras.length ? '▸ ' : '  '
@@ -399,7 +490,7 @@ function criarMostradorDeTokens(vscode, {
     })
     const algumPrecoFaltando = medidas_.some(x => x.resumo.faltouPreco || x.resumo.custoUsd == null)
     const dica = [
-      outras.length ? `Tokens das ${conversas.length} conversas desta janela (▸ = a que está em uso):` : 'Tokens desta conversa.',
+      outras.length ? `Tokens das ${aMostrar.length} conversas desta janela (▸ = a que está em uso):` : 'Tokens desta conversa.',
       ...porConversa,
       '',
       outras.length
@@ -410,17 +501,35 @@ function criarMostradorDeTokens(vscode, {
       '195k/13.3M = o tamanho da conversa agora / tudo que já passou pelo modelo (k = mil, M = milhões).',
       'O segundo é o que pesa: a conversa inteira volta ao modelo a cada resposta.',
       ...(algumPrecoFaltando ? ['$? = nenhum preço conhecido para o modelo · + depois do custo = falta o preço de algum modelo, o número está incompleto.'] : []),
+      // ⚠️ O QUE SAIU DA LINHA É DITO AQUI. Esconder conversa sem avisar seria a mesma classe de
+      // defeito que esta versão conserta: número que some calado.
+      ...(paradas > 0 ? ['', `${paradas} conversa${paradas > 1 ? 's' : ''} parada${paradas > 1 ? 's' : ''} há mais de 5 minutos não aparece${paradas > 1 ? 'm' : ''} na linha (continuam medidas; voltam quando você escrever nelas).`] : []),
       ...(rel ? ['', R.dicaDoRelogio(rel), '(O relógio do cache fica no rodapé do chat, ao lado do modelo.)'] : []),
       ...(sem ? ['', ...DICA_SEM_PASTA] : []),
     ]
-    return `${sem}${linha}\n${dica.join('\n')}`
+    /*
+      ⚠️ V30: SAI UMA LISTA, E NÃO UM TEXTO. O primeiro é o degrau mais completo e leva a dica
+      inteira (o núcleo tira o `title` das linhas depois da primeira); os outros são só a linha,
+      porque repetir a dica nove vezes seria publicar ~9 KB a cada poucos segundos, sem ninguém ler.
+    */
+    const linhas = (degraus && degraus.length ? degraus : [linha])
+    return [`${sem}${linhas[0]}\n${dica.join('\n')}`, ...linhas.slice(1).map(l => `${sem}${l}`)]
   }
 
   function publicar() {
     if (descartado) return
     medirTodas()
-    const texto = montarTexto()
-    const mostrar = texto !== null
+    const degraus = montarTexto()
+    const mostrar = degraus !== null
+    // ⚠️ SEMPRE JSON (array), mesmo com um degrau só: assim há UM formato para o núcleo ler, e não
+    // dois caminhos a manter. O `oficinaLerDegraus` ainda aceita texto puro — para um produto antigo,
+    // não para este.
+    // ⚠️ OS ESTADOS VAZIOS (`– · 0`, `– · ?`, a conversa que acabou de nascer) saem de `montarTexto`
+    // como UM texto, e não como escada: não há o que encolher neles. Normaliza-se aqui, num lugar só,
+    // para o núcleo ver sempre a mesma forma — e para os botões existirem TAMBÉM nesses estados, que
+    // é o que ele pediu (o botão existe mesmo sem ter o que mostrar).
+    const lista = degraus === null ? null : (Array.isArray(degraus) ? degraus : [degraus])
+    const texto = lista === null ? null : JSON.stringify({ degraus: lista, botoes: BOTOES_DA_FAIXA })
     if (publicado.mostrar !== mostrar) { definir(CHAVE_DE_MOSTRAR, mostrar); publicado.mostrar = mostrar }
     if (publicado.texto !== texto) {
       definir(CHAVE_DO_TEXTO, texto || '')
@@ -452,6 +561,29 @@ function criarMostradorDeTokens(vscode, {
     ligar, descartar, tique, publicar,
     get idAtual() { return emUso },
     get conversas() { return conversas.slice() },
+    /*
+      V30 — O QUE O MAPA DOS AGENTES LÊ. O mostrador já mede TODAS as conversas desta janela, e cada
+      medidor já traz os subagentes do disco (fichas `.meta.json` + `agent-<id>.jsonl`). Expor isto
+      evita um segundo leitor do mesmo disco — e é o que permite o mapa existir na conversa da
+      extensão OFICIAL, onde os eventos ao vivo do SDK não chegam à OFICINA.
+
+      ⚠️ AQUI NÃO SE PENEIRA POR INATIVIDADE. A peneira dos 5 minutos é do que se DESENHA na linha;
+      o mapa mostra os agentes das conversas da janela, e uma conversa parada pode ter deixado
+      agentes que ele quer ver.
+    */
+    get agentesPorConversa() {
+      return conversas.map(id => {
+        const x = medidas.get(id)
+        const r = x && x.resumo
+        return {
+          id,
+          nome: (x && x.medidor && typeof x.medidor.nome === 'string' ? x.medidor.nome : null) || null,
+          emUso: id === emUso,
+          contexto: r ? (r.contextoAgora || 0) : 0,
+          subagentes: r && Array.isArray(r.subagentes) ? r.subagentes : [],
+        }
+      })
+    },
     get temMedidor() { return [...medidas.values()].some(m => m.medidor) },
     get temRelogio() { return relogio !== null },
     get publicacoes() { return publicacoes },
@@ -469,5 +601,5 @@ const DICA_SEM_PASTA = [
 
 module.exports = {
   criarMostradorDeTokens, CHAVE_DO_TEXTO, CHAVE_DE_MOSTRAR, INTERVALO_MS, SEM_CONVERSA, SEM_MEDIDA,
-  AVISO_SEM_PASTA, dinheiro, tokens, nomeCurto, itemDoPainel, linhaDasConversas, LIMITE_DA_LINHA,
+  AVISO_SEM_PASTA, dinheiro, tokens, nomeCurto, itemDoPainel, degrausDasConversas, INATIVA_MS, BOTOES_DA_FAIXA,
 }

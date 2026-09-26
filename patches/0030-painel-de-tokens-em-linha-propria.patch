@@ -1,0 +1,750 @@
+diff --git a/src/vs/base/common/product.ts b/src/vs/base/common/product.ts
+index fb15b75..275797d 100644
+--- a/src/vs/base/common/product.ts
++++ b/src/vs/base/common/product.ts
+@@ -231,6 +231,24 @@ export interface IProductConfiguration {
+ 	 */
+ 	readonly titleBarGauges?: boolean;
+ 
++	/**
++	 * OFICINA patch 0030: the context key whose text the banner draws as a LIVE LABEL, on the row of
++	 * its own between the title bar and the tabs. Empty or absent means no label, and the banner
++	 * behaves as before.
++	 *
++	 * The key holds either one text or a JSON array of texts from the fullest to the tightest; the
++	 * banner measures and draws the widest one that fits. The core never learns what the text MEANS —
++	 * the product picks the key, an extension fills it, and only they know whether it counts tokens,
++	 * money or files.
++	 */
++	readonly bannerLiveLabelContextKey?: string;
++
++	/**
++	 * OFICINA patch 0030: the command run when the live label is clicked. Absent means the label is
++	 * not clickable.
++	 */
++	readonly bannerLiveLabelCommand?: string;
++
+ 	/**
+ 	 * Command ids to drop from the editor TAB BAR toolbar (the row of icons at the right of the tabs).
+ 	 *
+diff --git a/src/vs/workbench/browser/parts/banner/bannerPart.ts b/src/vs/workbench/browser/parts/banner/bannerPart.ts
+index f02af67..a897739 100644
+--- a/src/vs/workbench/browser/parts/banner/bannerPart.ts
++++ b/src/vs/workbench/browser/parts/banner/bannerPart.ts
+@@ -35,6 +35,7 @@ import { IProductService } from '../../../../platform/product/common/productServ
+ import { ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { DisposableStore } from '../../../../base/common/lifecycle.js';
+ import { titleBarGaugesSlot } from './gaugesSlot.js';
++import { IOficinaBotaoDoRotulo, oficinaDesenharEmPedacos, oficinaEscolherDegrau, oficinaLerRotulo } from '../oficinaRotuloVivo.js';
+ 
+ const gaugeExpandIcon = registerIcon('banner-gauges-expand', Codicon.graphLine, localize('bannerGaugesExpandIcon', 'Icon of the button that opens the details behind the banner gauges.'));
+ 
+@@ -76,6 +77,42 @@ export class BannerPart extends Part implements IBannerService {
+ 	private readonly gaugesKey: string | undefined;
+ 	private gaugesShowing = false;
+ 
++	/**
++	 * LIVE LABEL (OFICINA patch 0030). The product names a second context key; its text is drawn on
++	 * this row, in the coloured pieces of `oficinaRotuloVivo.ts`.
++	 *
++	 * ⚠️ WHY THIS ROW EXISTS AGAIN. Patch 0028 moved the gauges up to the title bar and gave this row
++	 * back to the editor. What stayed up there with them was the token label, capped at `30vw` —
++	 * 413 px on the owner's screen — and measured on 26/09/2026: with TWO conversations the text
++	 * already asks for 511 px, so the extension had to drop half of it (the tokens actually spent)
++	 * and cut the conversation names. On a row of its own the same text has the whole window (~1350 px)
++	 * and five conversations fit whole. The gauges stay in the title bar; they only come back down
++	 * here when the window is too narrow for them, and then the two share the row.
++	 *
++	 * The core still never learns what the text MEANS — see `bannerLiveLabelContextKey`.
++	 */
++	private readonly liveLabelKey: string | undefined;
++	private readonly liveLabelCommand: string | undefined;
++	private liveLabelHost: HTMLElement | undefined;
++	private liveLabel: HTMLElement | undefined;
++	/** The steps published by the product, from the fullest to the tightest. */
++	private liveLabelSteps: string[] = [];
++	/**
++	 * The buttons published alongside the label.
++	 *
++	 * ⚠️ THEY ARE DRAWN WHETHER OR NOT THERE IS ANYTHING BEHIND THEM — the owner's decision, 26/09/2026:
++	 * *"se não tiver nenhuma conversa rodando (...) não vai mostrar nada, mas ele existe"*. This reverses
++	 * the rule of 24/09 ("where there is nothing to do, there is no button") for this row, on purpose: a
++	 * button that comes and goes teaches nobody where the thing lives. Whoever opens an empty one is told
++	 * it is empty by what opens — never by the button vanishing.
++	 */
++	private liveLabelButtons: IOficinaBotaoDoRotulo[] = [];
++	/** Full text of the last read, whose lines after the first are the hover. */
++	private liveLabelTooltip = '';
++	/** Cache of the fitting pass: measuring nine candidates on every layout would be wasteful. */
++	private liveLabelLastWidth = -1;
++	private liveLabelLastSteps = '';
++
+ 	private actionBar: ActionBar | undefined;
+ 	private messageActionsContainer: HTMLElement | undefined;
+ 	private focusedActionIndex: number = -1;
+@@ -93,6 +130,8 @@ export class BannerPart extends Part implements IBannerService {
+ 		super(Parts.BANNER_PART, { hasTitle: false }, themeService, storageService, layoutService);
+ 
+ 		this.gaugesKey = productService.bannerGaugesContextKey;
++		this.liveLabelKey = productService.bannerLiveLabelContextKey;
++		this.liveLabelCommand = productService.bannerLiveLabelCommand;
+ 	}
+ 
+ 	protected override createContentArea(parent: HTMLElement): HTMLElement {
+@@ -110,10 +149,11 @@ export class BannerPart extends Part implements IBannerService {
+ 		const scopedContextKeyService = this._register(this.contextKeyService.createScoped(this.element));
+ 		BannerFocused.bindTo(scopedContextKeyService).set(true);
+ 
+-		// Gauges (OFICINA patch 0017): redraw whenever the product's key changes, and draw once
+-		// now — the key may already hold a value by the time this part is created.
+-		if (this.gaugesKey) {
+-			const keys = new Set([this.gaugesKey]);
++		// Gauges (OFICINA patch 0017) and live label (patch 0030): redraw whenever either product key
++		// changes, and draw once now — a key may already hold a value by the time this part is created.
++		const chaves = [this.gaugesKey, this.liveLabelKey].filter((k): k is string => !!k);
++		if (chaves.length) {
++			const keys = new Set(chaves);
+ 			this._register(this.contextKeyService.onDidChangeContext(e => {
+ 				if (e.affectsSome(keys)) {
+ 					this.updateGauges();
+@@ -134,42 +174,35 @@ export class BannerPart extends Part implements IBannerService {
+ 	 * percentage so a bad value cannot paint outside the bar, and draws.
+ 	 */
+ 	private updateGauges(): void {
+-		if (!this.gaugesKey) {
+-			return;
+-		}
+-
+-		const gauges = this.readGauges();
++		const gauges = this.gaugesKey ? this.readGauges() : [];
+ 
+ 		// OFICINA patch 0028: tell the title bar whether there is anything to host, BEFORE reading the
+ 		// slot — it may offer or take back the slot right here, and the lines below follow its answer.
+ 		titleBarGaugesSlot.setTemMedidores(gauges.length > 0);
+ 
+-		// OFICINA patch 0028: while the title bar offers a slot, the gauges live THERE, and the banner
+-		// row is not used for them — that row is the height this patch gives back to the editor. A
+-		// message banner no longer competes with the gauges in this case: the message gets the row,
+-		// the gauges stay in the title bar.
++		// OFICINA patch 0028: while the title bar offers a slot, the gauges live THERE.
+ 		const slot = titleBarGaugesSlot.element;
+ 		if (slot) {
+-			if (this.gaugesShowing && !this.item) {
+-				clearNode(this.element);
+-				this.setVisibility(false);
+-			}
+-			this.gaugesShowing = false;
+ 			this.renderGauges(slot, gauges);
+ 			titleBarGaugesSlot.notifyRendered();
+-			return;
+ 		}
+ 
++		// OFICINA patch 0030: what is left for THIS row — the gauges only when the title bar did not
++		// take them, and the live label whenever the product publishes one.
++		const medidoresAqui = slot ? [] : gauges;
++		this.lerRotuloVivo();
++
+ 		// A message banner wins: do not touch the DOM while one is on screen. When it closes,
+-		// close() calls back here and the gauges return.
++		// close() calls back here and the row returns.
+ 		if (this.item) {
+ 			this.gaugesShowing = false;
+ 			return;
+ 		}
+ 
+-		if (!gauges.length) {
++		if (!medidoresAqui.length && !this.liveLabelSteps.length) {
+ 			if (this.gaugesShowing) {
+ 				this.gaugesShowing = false;
++				this.esquecerORotulo();
+ 				clearNode(this.element);
+ 				this.setVisibility(false);
+ 			}
+@@ -177,10 +210,155 @@ export class BannerPart extends Part implements IBannerService {
+ 		}
+ 
+ 		this.element.removeAttribute('aria-label');
+-		this.renderGauges(this.element, gauges);
++		this.esquecerORotulo();
++		clearNode(this.element);
++
++		// ⚠️ DOIS HOSTS, E NAO UM. `renderGauges` limpa o host que recebe, entao os medidores e o
++		// rotulo precisam de caixas separadas — senao o segundo a desenhar apaga o primeiro.
++		const linha = append(this.element, $('div.oficina-faixa'));
++		if (medidoresAqui.length) {
++			this.renderGauges(append(linha, $('div.oficina-faixa-medidores')), medidoresAqui);
++		}
++		if (this.liveLabelSteps.length) {
++			this.liveLabelHost = append(linha, $('div.oficina-faixa-rotulo'));
++			this.renderLiveLabel();
++		}
+ 
+ 		this.gaugesShowing = true;
+ 		this.setVisibility(true);
++
++		// A largura so existe depois de a faixa estar visivel (parte escondida mede zero), por isso a
++		// escolha do degrau roda AQUI e a cada layout — e o cache abaixo evita remedir a cada pixel.
++		this.liveLabelLastWidth = -1;
++		this.ajustarODegrau();
++	}
++
++	/** Listeners of the live label currently drawn. Cleared on every redraw, like the gauges'. */
++	private readonly liveLabelListeners = this._register(new DisposableStore());
++
++	private esquecerORotulo(): void {
++		this.liveLabelListeners.clear();
++		this.liveLabelHost = undefined;
++		this.liveLabel = undefined;
++		this.liveLabelLastWidth = -1;
++		this.liveLabelLastSteps = '';
++	}
++
++	/**
++	 * Reads the product's live-label key into the list of steps.
++	 *
++	 * Anything malformed yields an empty list rather than an exception — same rule as `readGauges`:
++	 * this runs on every context change and a bad value must not break the workbench.
++	 */
++	private lerRotuloVivo(): void {
++		this.liveLabelSteps = [];
++		this.liveLabelButtons = [];
++		this.liveLabelTooltip = '';
++		if (!this.liveLabelKey) {
++			return;
++		}
++		const { degraus, botoes } = oficinaLerRotulo(this.contextKeyService.getContextKeyValue<unknown>(this.liveLabelKey));
++		if (!degraus.length) {
++			return;
++		}
++		this.liveLabelSteps = degraus;
++		this.liveLabelButtons = botoes;
++		// The hover is the lines after the first of the FULLEST step: that is where whoever writes the
++		// text puts what did not fit on the line (patch 0029 does not touch those lines either). With a
++		// single line, the hover is that fullest step — useful precisely when a tighter one is drawn.
++		const linhas = degraus[0].split('\n');
++		this.liveLabelTooltip = linhas.length > 1 ? linhas.slice(1).join('\n') : linhas[0];
++	}
++
++	/** Draws the live label into its host, with the fullest step; `ajustarODegrau` then fits it. */
++	private renderLiveLabel(): void {
++		const host = this.liveLabelHost;
++		if (!host) {
++			return;
++		}
++		this.liveLabelListeners.clear();
++		clearNode(host);
++
++		// Os botões primeiro, à esquerda do texto: são âncora, e âncora não muda de lugar quando o
++		// texto encolhe. `flex-shrink: 0` no CSS garante que eles não cedam espaço ao rótulo.
++		for (const botao of this.liveLabelButtons) {
++			const b = append(host, $('a.banner-live-button'));
++			b.setAttribute('role', 'button');
++			b.setAttribute('tabindex', '0');
++			b.setAttribute('aria-label', botao.dica || botao.comando);
++			if (botao.dica) {
++				b.title = botao.dica;
++			}
++			b.appendChild($(`span${ThemeIcon.asCSSSelector(ThemeIcon.fromId(botao.icone))}`));
++			const abrir = () => this.commandService.executeCommand(botao.comando);
++			this.liveLabelListeners.add(addDisposableListener(b, EventType.CLICK, abrir));
++			this.liveLabelListeners.add(addDisposableListener(b, EventType.KEY_DOWN, (e: KeyboardEvent) => {
++				if (e.key === 'Enter' || e.key === ' ') {
++					e.preventDefault();
++					abrir();
++				}
++			}));
++		}
++
++		const alvo = append(host, $('div.banner-live-label'));
++		this.liveLabel = alvo;
++		oficinaDesenharEmPedacos(alvo, (this.liveLabelSteps[0] ?? '').split('\n')[0]);
++		if (this.liveLabelTooltip) {
++			alvo.title = this.liveLabelTooltip;
++		}
++		if (!this.liveLabelCommand) {
++			return;
++		}
++		const comando = this.liveLabelCommand;
++		alvo.setAttribute('role', 'button');
++		alvo.setAttribute('tabindex', '0');
++		alvo.classList.add('clickable');
++		const run = () => this.commandService.executeCommand(comando);
++		this.liveLabelListeners.add(addDisposableListener(alvo, EventType.CLICK, run));
++		this.liveLabelListeners.add(addDisposableListener(alvo, EventType.KEY_DOWN, (e: KeyboardEvent) => {
++			if (e.key === 'Enter' || e.key === ' ') {
++				e.preventDefault();
++				run();
++			}
++		}));
++	}
++
++	/**
++	 * Picks the widest step that fits the room the label actually has, MEASURING each candidate.
++	 *
++	 * ⚠️ MEASURING, NOT COUNTING CHARACTERS. Until this patch the extension counted characters against
++	 * a width it could not see, and the count went stale the moment the cap or the screen changed —
++	 * that guess is what dropped half the numbers on the owner's screen. The width is known here, and
++	 * only here; the policy of what gives way first stays with whoever wrote the steps.
++	 */
++	private ajustarODegrau(): void {
++		const alvo = this.liveLabel;
++		const host = this.liveLabelHost;
++		if (!alvo || !host || !this.liveLabelSteps.length) {
++			return;
++		}
++		const largura = Math.floor(host.clientWidth);
++		if (largura <= 0) {
++			return; // a faixa ainda nao foi medida; o proximo layout tenta de novo
++		}
++		const assinatura = this.liveLabelSteps.join('\u0000');
++		if (largura === this.liveLabelLastWidth && assinatura === this.liveLabelLastSteps) {
++			return;
++		}
++		this.liveLabelLastWidth = largura;
++		this.liveLabelLastSteps = assinatura;
++		const primeiraLinha = this.liveLabelSteps.map(t => t.split('\n')[0]);
++		const escolhido = oficinaEscolherDegrau(primeiraLinha, largura, texto => {
++			oficinaDesenharEmPedacos(alvo, texto);
++			return alvo.scrollWidth;
++		});
++		oficinaDesenharEmPedacos(alvo, escolhido);
++	}
++
++	override layout(width: number, height: number, top: number, left: number): void {
++		super.layout(width, height, top, left);
++		// OFICINA patch 0030: a janela mudou de largura — o degrau pode ser outro.
++		this.ajustarODegrau();
+ 	}
+ 
+ 	/**
+diff --git a/src/vs/workbench/browser/parts/banner/media/bannerpart.css b/src/vs/workbench/browser/parts/banner/media/bannerpart.css
+index 6495c37..684bef1 100644
+--- a/src/vs/workbench/browser/parts/banner/media/bannerpart.css
++++ b/src/vs/workbench/browser/parts/banner/media/bannerpart.css
+@@ -89,6 +89,88 @@
+  * progress bar colour.
+  */
+ 
++/* OFICINA patch 0030: a faixa hospeda DUAS coisas — o rotulo vivo (o painel de tokens, que ganhou
++   uma linha propria) e, so quando a janela e estreita demais para eles la em cima, os medidores.
++   A caixa do rotulo e que estica: sao os numeros dele que precisam de espaco, e os medidores tem
++   largura fixa. */
++.monaco-workbench .part.banner .oficina-faixa {
++	display: flex;
++	flex-direction: row;
++	align-items: center;
++	gap: 16px;
++	box-sizing: border-box;
++	width: 100%;
++	height: 26px;
++	padding: 0 12px;
++	overflow: hidden;
++}
++
++.monaco-workbench .part.banner .oficina-faixa > .oficina-faixa-medidores {
++	flex-shrink: 0;
++}
++
++/* Dentro da faixa o grupo de medidores nao repete a largura nem o respiro da linha: quem os da
++   agora e `.oficina-faixa`. Sem isto o grupo ocuparia 100% e empurraria o rotulo para fora. */
++.monaco-workbench .part.banner .oficina-faixa .gauges-container {
++	width: auto;
++	padding: 0;
++}
++
++.monaco-workbench .part.banner .oficina-faixa > .oficina-faixa-rotulo {
++	display: flex;
++	align-items: center;
++	flex: 1 1 auto;
++	/* `min-width: 0` e o que permite ENCOLHER dentro do flex — sem ele a caixa nunca fica menor que
++	   o conteudo, `clientWidth` devolveria a largura do texto inteiro e a escolha do degrau acharia
++	   que tudo cabe sempre. */
++	min-width: 0;
++	overflow: hidden;
++}
++
++/* Os botoes da faixa (patch 0030): mesmo desenho do botao de expandir dos medidores (0017), para a
++   linha ter UM vocabulario visual. ⚠️ `flex-shrink: 0`: quando o texto encolhe, quem cede e o texto —
++   o botao e ancora, e ancora que muda de lugar deixa de ser ancora. */
++.monaco-workbench .part.banner .banner-live-button {
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	flex-shrink: 0;
++	width: 20px;
++	height: 20px;
++	border-radius: 4px;
++	cursor: pointer;
++	color: var(--vscode-banner-foreground);
++	-webkit-app-region: no-drag;
++}
++
++.monaco-workbench .part.banner .banner-live-button:hover {
++	background-color: var(--vscode-toolbar-hoverBackground);
++}
++
++.monaco-workbench .part.banner .banner-live-button:focus-visible {
++	outline: 1px solid var(--vscode-focusBorder);
++	outline-offset: -1px;
++}
++
++/* A caixa do rotulo tem os botoes E o texto: eles ficam em linha, com respiro entre si. */
++.monaco-workbench .part.banner .oficina-faixa > .oficina-faixa-rotulo {
++	gap: 8px;
++}
++
++/* ⚠️ `white-space: pre` e o contrato com `oficinaRotuloVivo.ts`: os espacos que separam as partes
++   estao NO TEXTO, e colapsa-los mudaria o que o leitor de tela e o copiar/colar recebem. */
++.monaco-workbench .part.banner .banner-live-label {
++	white-space: pre;
++	overflow: hidden;
++	text-overflow: ellipsis;
++	line-height: 26px;
++}
++
++.monaco-workbench .part.banner .banner-live-label.clickable {
++	cursor: pointer;
++	-webkit-app-region: no-drag;
++}
++
+ .monaco-workbench .part.banner .gauges-container {
+ 	display: flex;
+ 	flex-direction: row;
+diff --git a/src/vs/workbench/browser/parts/oficinaRotuloVivo.ts b/src/vs/workbench/browser/parts/oficinaRotuloVivo.ts
+new file mode 100644
+index 0000000..9a30b08
+--- /dev/null
++++ b/src/vs/workbench/browser/parts/oficinaRotuloVivo.ts
+@@ -0,0 +1,182 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++/**
++ * OFICINA patch 0030: the live label, drawn in coloured pieces — shared by the two hosts.
++ *
++ * Patch 0029 taught the TITLE BAR to draw the live token label in pieces, each with the colour of
++ * the floating token panel the owner uses. Patch 0030 gives that label a row of its own (the
++ * banner), and the two must look the same — so the drawing moved here instead of being copied.
++ * A copy would drift: the first colour changed in one host and not in the other is a defect the
++ * owner would see instantly, since the whole point of 0029 was "the same as my panel".
++ *
++ * Nothing here knows what the text MEANS. It cuts the text on the separators whoever writes it
++ * already uses (` │ ` between items, two spaces between the parts of one item) and colours each
++ * piece BY FORMAT. Text with no separator comes out as a single piece with the name colour.
++ *
++ * ⚠️ THE SPACES STAY IN THE TEXT, not in margins. The first version of 0029 separated the pieces
++ * with `margin`, and the label's `textContent` became `nome$1.2469.6k` — which is what a screen
++ * reader and copy/paste get, and what the regression suite reads. With `white-space: pre` the two
++ * spaces show as they are, and the element's text is EXACTLY what was written.
++ *
++ * ⚠️ The colours are the panel's, and the panel is dark. On a light theme they would be washed out;
++ * OFICINA has only a dark theme today, and this is said here for when it has another.
++ */
++
++const COR_DO_NOME = '#a8afb9';
++const COR_DO_VALOR = '#f2f4f6';
++const COR_DOS_TOKENS = '#949ba6';
++const COR_DO_RISCO = 'rgba(255, 255, 255, 0.28)';
++
++/** A number with an optional `k`/`M`, alone or as `agora/total` — the token counts. */
++const PADRAO_DOS_TOKENS = /^[\d.,]+[kM]?(\/[\d.,]+[kM]?)?$/;
++
++export function oficinaDesenharEmPedacos(alvo: HTMLElement, texto: string): void {
++	alvo.textContent = '';
++	alvo.style.whiteSpace = 'pre';
++	const doc = alvo.ownerDocument;
++	const itens = texto.split(' │ ');
++	itens.forEach((item, i) => {
++		if (i > 0) {
++			const risco = doc.createElement('span');
++			risco.textContent = ' │ ';
++			risco.style.color = COR_DO_RISCO;
++			alvo.appendChild(risco);
++		}
++		item.split(/( {2,})/).forEach(parte => {
++			if (!parte) {
++				return;
++			}
++			if (!parte.trim()) {
++				alvo.appendChild(doc.createTextNode(parte));
++				return;
++			}
++			const pedaco = doc.createElement('span');
++			pedaco.textContent = parte;
++			if (/^\$/.test(parte.trim())) {
++				pedaco.style.color = COR_DO_VALOR;
++				pedaco.style.fontWeight = '600';
++			} else if (PADRAO_DOS_TOKENS.test(parte.trim())) {
++				pedaco.style.color = COR_DOS_TOKENS;
++				pedaco.style.fontSize = '0.9em';
++			} else {
++				pedaco.style.color = COR_DO_NOME;
++			}
++			alvo.appendChild(pedaco);
++		});
++	});
++}
++
++/**
++ * What the product publishes in the live-label key: either one text, or a LIST of texts from the
++ * fullest to the tightest, for the host to pick the widest one that fits.
++ *
++ * ⚠️ WHY A LIST, AND NOT A CHARACTER LIMIT. Until patch 0030 the extension guessed how much fitted
++ * by counting characters against a width it could not see (`LIMITE_DA_LINHA = 78`, derived from the
++ * `30vw` cap of patch 0023). A guess like that is wrong twice: it wastes room on a wide window and
++ * overflows on a narrow one, and it goes stale the day the cap or the screen changes — which is
++ * exactly what the owner ran into. Now the EXTENSION owns the policy (what gives way first: the
++ * total, then the sum, then the name) and the HOST owns the measuring, because only it knows the
++ * width. Neither has to know the other's half.
++ */
++export type OficinaTextoVivo = string | string[];
++
++/**
++ * Picks, among `degraus`, the first whose drawn width fits `largura`, measuring for real.
++ *
++ * Measuring beats estimating here: the label's font, letter spacing and the `0.9em` of the token
++ * pieces are all in the CSS, and any arithmetic over character counts would have to guess them.
++ *
++ * @param medir draws a candidate and answers how wide it came out
++ * @returns the chosen text — the last one when none fits, so there is always something to draw
++ */
++export function oficinaEscolherDegrau(degraus: string[], largura: number, medir: (texto: string) => number): string {
++	for (const degrau of degraus) {
++		if (medir(degrau) <= largura) {
++			return degrau;
++		}
++	}
++	return degraus[degraus.length - 1];
++}
++
++/** A button the product asks the banner to draw next to the label. */
++export interface IOficinaBotaoDoRotulo {
++	readonly comando: string;
++	/** A codicon id, e.g. `graph`. Anything else is ignored rather than injected as a selector. */
++	readonly icone: string;
++	readonly dica: string;
++}
++
++export interface IOficinaRotulo {
++	readonly degraus: string[];
++	readonly botoes: IOficinaBotaoDoRotulo[];
++}
++
++/** Only a codicon id — never a selector. What the product writes here is drawn as a CSS class. */
++const PADRAO_DO_ICONE = /^[a-z0-9-]+$/;
++
++function lerBotoes(valor: unknown): IOficinaBotaoDoRotulo[] {
++	if (!Array.isArray(valor)) {
++		return [];
++	}
++	const botoes: IOficinaBotaoDoRotulo[] = [];
++	for (const b of valor) {
++		if (!b || typeof b !== 'object') {
++			continue;
++		}
++		const { comando, icone, dica } = b as { comando?: unknown; icone?: unknown; dica?: unknown };
++		if (typeof comando !== 'string' || !comando) {
++			continue;
++		}
++		if (typeof icone !== 'string' || !PADRAO_DO_ICONE.test(icone)) {
++			continue;
++		}
++		botoes.push({ comando, icone, dica: typeof dica === 'string' ? dica : '' });
++	}
++	return botoes;
++}
++
++function textos(valor: unknown): string[] {
++	return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
++}
++
++/**
++ * Reads whatever is in the context key.
++ *
++ * Accepts three shapes, oldest to newest: a plain string (one step — what patches 0016–0029
++ * published), a JSON array of strings (steps), and a JSON object `{ degraus, botoes }`. A product
++ * that has not been updated keeps working, and nothing here throws: this runs on every context
++ * change, and a bad value must not be able to break the workbench.
++ */
++export function oficinaLerRotulo(valor: unknown): IOficinaRotulo {
++	const vazio: IOficinaRotulo = { degraus: [], botoes: [] };
++	if (Array.isArray(valor)) {
++		return { degraus: textos(valor), botoes: [] };
++	}
++	if (typeof valor !== 'string' || !valor) {
++		return vazio;
++	}
++	const cru = valor.trim();
++	if (cru.startsWith('[') || cru.startsWith('{')) {
++		try {
++			const lido = JSON.parse(cru);
++			if (Array.isArray(lido)) {
++				const degraus = textos(lido);
++				if (degraus.length) {
++					return { degraus, botoes: [] };
++				}
++			} else if (lido && typeof lido === 'object') {
++				const o = lido as { degraus?: unknown; botoes?: unknown };
++				const degraus = textos(o.degraus);
++				if (degraus.length) {
++					return { degraus, botoes: lerBotoes(o.botoes) };
++				}
++			}
++		} catch {
++			// Not JSON after all: treat it as the plain text it looks like.
++		}
++	}
++	return { degraus: [valor], botoes: [] };
++}
+diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+index c0c266c..56f903c 100644
+--- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -656,17 +656,20 @@
+ }
+ 
+ .monaco-workbench .part.titlebar > .titlebar-container.oficina-medidores-na-barra > .titlebar-center > .window-title > .command-center .action-item.command-center-center {
+-	width: 145px;
+-	max-width: 145px;
++	width: 280px;
++	max-width: 280px;
+ }
+ 
+ .monaco-workbench .part.titlebar > .titlebar-container.oficina-medidores-na-barra > .titlebar-center > .window-title > .command-center .action-item.command-center-center .action-item.command-center-quick-pick {
+-	max-width: 145px;
++	max-width: 280px;
+ }
+ 
+-/* Os medidores em si: o mesmo desenho da faixa (patch 0017), compacto — barrinhas 10% menores
+-   (90 -> 81 px) e o vao entre os dois apertado (18 -> 12 px), como aprovado. Sem `no-drag` nos
+-   medidores: eles continuam sendo alca para arrastar a janela; so o botao de expandir nao e. */
++/* Os medidores em si: o mesmo desenho da faixa (patch 0017). ⚠️ PATCH 0030 — eles CRESCERAM: o
++   rotulo de tokens saiu desta barra para a linha propria e devolveu ~418 px (medido em 26/09/2026,
++   com os 8 icones dele). Pedido: "deixar essas barrinhas um pouco maiores e mais espacadas".
++   Trilho 81 -> 110 px, vao entre os dois 12 -> 24 px, vao interno 6 -> 8 px, e a pesquisa
++   145 -> 280 px. Folga conferida pela conta do 0028: 1183 px de 1376. Sem `no-drag` nos medidores:
++   eles continuam sendo alca para arrastar a janela; so o botao de expandir nao e. */
+ .monaco-workbench .part.titlebar .titlebar-gauges {
+ 	display: flex;
+ 	align-items: center;
+@@ -681,7 +684,7 @@
+ 	display: flex;
+ 	flex-direction: row;
+ 	align-items: center;
+-	gap: 12px;
++	gap: 24px;
+ 	padding: 0 8px;
+ 	height: 100%;
+ 	color: var(--vscode-titleBar-activeForeground);
+@@ -712,7 +715,7 @@
+ 	display: flex;
+ 	flex-direction: row;
+ 	align-items: center;
+-	gap: 6px;
++	gap: 8px;
+ 	flex-shrink: 0;
+ }
+ 
+@@ -725,7 +728,7 @@
+    preenchimento, e a barra leria ao contrario (medido no 0017). */
+ .monaco-workbench .part.titlebar .titlebar-gauges .gauge-track {
+ 	position: relative;
+-	width: 81px;
++	width: 110px;
+ 	height: 6px;
+ 	border-radius: 3px;
+ 	overflow: hidden;
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+index 7e5c179..b517532 100644
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -20,6 +20,7 @@ import { isMacintosh, isWindows, isLinux, isWeb, isNative, platformLocale } from
+ import { Color } from '../../../../base/common/color.js';
+ import { EventType, EventHelper, Dimension, append, $, addDisposableListener, prepend, reset, getWindow, getWindowId, isAncestor, getActiveDocument, isHTMLElement, clearNode } from '../../../../base/browser/dom.js';
+ import { titleBarGaugesSlot } from '../banner/gaugesSlot.js';
++import { oficinaDesenharEmPedacos } from '../oficinaRotuloVivo.js';
+ import { CustomMenubarControl } from './menubarControl.js';
+ import { IInstantiationService, ServicesAccessor } from '../../../../platform/instantiation/common/instantiation.js';
+ import { Emitter, Event } from '../../../../base/common/event.js';
+@@ -313,62 +314,12 @@ function oficinaTemRotuloVivo(action: IAction): action is MenuItemAction {
+ 	return OFICINA_PADRAO_DA_CHAVE.test(oficinaTituloCru(action));
+ }
+ 
+-// --- OFICINA patch 0029: o rotulo vivo e desenhado EM PEDACOS, com as cores do painel de tokens.
++// --- OFICINA patch 0030: o desenho EM PEDACOS mudou-se para `oficinaRotuloVivo.ts`.
+ //
+-// O dono usa um painel flutuante de tokens e quer a barra igual a ele: *"a principal diferenca e
+-// um pouco da cor"*. Com `textContent` a linha inteira sai numa cor so. O texto continua vindo
+-// inteiro do context key; aqui ele so e cortado nos separadores que quem escreve ja usa:
+-// ` │ ` entre um item e outro, e dois espacos entre as partes de um item. Cada parte ganha a cor
+-// do painel pelo formato: `$...` e o valor (claro e em negrito), numero com `k`/`M` sao os tokens
+-// (mais apagado e menor), o resto e o nome (apagado). Texto sem separador nenhum sai numa parte
+-// so, com a cor do nome: nada que ja existia muda de conteudo.
+-//
+-// ⚠️ As cores sao as do painel, que e escuro. Num tema claro elas ficariam apagadas demais; a
+-// OFICINA hoje so tem tema escuro, e isto esta dito para quando tiver outro.
+-const OFICINA_COR_DO_NOME = '#a8afb9';
+-const OFICINA_COR_DO_VALOR = '#f2f4f6';
+-const OFICINA_COR_DOS_TOKENS = '#949ba6';
+-const OFICINA_COR_DO_RISCO = 'rgba(255, 255, 255, 0.28)';
+-
+-// ⚠️ OS ESPACOS FICAM NO TEXTO, e nao em margem. A primeira versao separava as partes com margem, e o
+-// `textContent` do rotulo virou `nome$1.2469.6k` — o que leitor de tela e copiar/colar recebem, e o
+-// que a regressao le. Com `white-space: pre` no rotulo, os dois espacos entre as partes aparecem
+-// como estao (nao colapsam em um), e o texto do elemento e EXATAMENTE o que a extensao escreveu.
+-function oficinaDesenharEmPedacos(alvo: HTMLElement, texto: string): void {
+-	alvo.textContent = '';
+-	alvo.style.whiteSpace = 'pre';
+-	const doc = alvo.ownerDocument;
+-	const itens = texto.split(' │ ');
+-	itens.forEach((item, i) => {
+-		if (i > 0) {
+-			const risco = doc.createElement('span');
+-			risco.textContent = ' │ ';
+-			risco.style.color = OFICINA_COR_DO_RISCO;
+-			alvo.appendChild(risco);
+-		}
+-		item.split(/( {2,})/).forEach(parte => {
+-			if (!parte) {
+-				return;
+-			}
+-			if (!parte.trim()) {
+-				alvo.appendChild(doc.createTextNode(parte));
+-				return;
+-			}
+-			const pedaco = doc.createElement('span');
+-			pedaco.textContent = parte;
+-			if (/^\$/.test(parte.trim())) {
+-				pedaco.style.color = OFICINA_COR_DO_VALOR;
+-				pedaco.style.fontWeight = '600';
+-			} else if (/^[\d.,]+[kM]?(\/[\d.,]+[kM]?)?$/.test(parte.trim())) {
+-				pedaco.style.color = OFICINA_COR_DOS_TOKENS;
+-				pedaco.style.fontSize = '0.9em';
+-			} else {
+-				pedaco.style.color = OFICINA_COR_DO_NOME;
+-			}
+-			alvo.appendChild(pedaco);
+-		});
+-	});
+-}
++// O patch 0029 escrevia o desenho aqui. Agora o rotulo vivo tem DUAS casas — esta barra e a
++// faixa (patch 0030) — e as duas tem de desenhar igual: o pedido que criou o 0029 foi
++// "quero o mesmo do meu painel", e uma copia do desenho comecaria a divergir na primeira
++// cor mudada de um lado so. As cores e os formatos moram la; aqui so se chama.
+ 
+ class OficinaLiveLabelActionViewItem extends MenuEntryActionViewItem {
+ 
+@@ -1343,7 +1294,10 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 	 * barra de titulo volta a ser a de antes (revisao: a primeira versao deixava a classe sempre ligada, e
+ 	 * o `flex-shrink: 0` da esquerda anulava o encolhimento dos icones de que o patch 0022 depende).
+ 	 */
+-	private static readonly LARGURA_DA_PESQUISA = 145;
++	// ⚠️ PATCH 0030: 145 -> 280. O rotulo de tokens saiu desta barra (ganhou linha propria) e
++	// devolveu ~418 px; a pesquisa, que a V27 tinha reduzido a quase um botao, volta a mostrar o
++	// nome da pasta. Se este numero e o do CSS discordarem, a conta de "cabe?" mente.
++	private static readonly LARGURA_DA_PESQUISA = 280;
+ 
+ 	private acomodarMedidores(): void {
+ 		const encaixe = this.encaixeDosMedidores;

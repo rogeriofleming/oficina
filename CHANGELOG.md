@@ -2,6 +2,31 @@
 
 Todas as mudanças que importam, versão a versão. Datas em dd/mm/aaaa.
 
+## [v30] — 26/09/2026 — **o painel de tokens ganha uma linha só dele**
+
+- **O painel de tokens saiu da barra de cima e tem uma linha própria**, logo abaixo dela. O motivo,
+  medido: na barra ele tinha no máximo 413 px numa tela de 1360, e o texto com **duas** conversas já
+  pedia 511 px — por isso metade dos números (o total processado) sumia e os nomes eram cortados.
+  Na linha nova ele tem a janela inteira: **cinco conversas cabem inteiras**, com nome completo,
+  custo, contexto **e** total processado.
+- **Quem escolhe o que cabe agora mede.** Antes a conta era por número de caracteres, chutado contra
+  uma largura que o contador não enxergava — errava para os dois lados e envelhecia sozinho. Agora o
+  programa desenha e mede, e só encurta quando falta espaço de verdade.
+- **Os limites do plano ficaram maiores na barra de cima**, e param de descer para baixo: as barrinhas
+  passaram de 81 para 110 px, o vão entre elas dobrou, e a **barra de pesquisa voltou a 280 px** (era
+  145) — o espaço que o contador devolveu.
+- **Conversa parada há mais de 5 minutos sai da linha.** Ela continua sendo medida e volta assim que
+  você escrever nela; a conversa em uso nunca sai. A dica do mouse diz quantas saíram.
+- **Renomear a conversa pelo botão direito na aba.** O comando existia, mas só dentro da conversa e na
+  paleta — no menu da aba não havia nada.
+- **Dois botões na linha nova:** um abre o detalhe dos tokens (modelos, subagentes, skills) e outro
+  abre o **mapa dos agentes** — quais subagentes cada conversa lançou, o que consumiram e de quem cada
+  um derivou. Os dois botões existem sempre, mesmo quando não há nada para mostrar.
+  ⚠️ *Limite:* o mapa é lido do arquivo de cada conversa, então mostra o estado e a árvore, mas não o
+  que cada agente está fazendo **neste instante** — isso só na conversa própria da OFICINA (`Ctrl+T`).
+- ⚠️ *Custo desta versão:* a linha nova ocupa 26 px que antes eram do editor. E ela divide lugar com os
+  avisos do editor — quando aparecer um aviso, o painel some enquanto ele estiver na tela.
+
 ## [v29] — 26/09/2026 — **o contador de tokens mostra cada conversa pelo nome**
 
 - **Todas as conversas da janela, cada uma com o nome.** Com mais de uma conversa aberta, o contador

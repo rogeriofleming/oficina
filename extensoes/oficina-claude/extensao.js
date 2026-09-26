@@ -53,6 +53,8 @@ const { criarFaixa: criarFaixaDoLimite } = require('./faixaDoLimite')
 const { criarMostradorDeTokens } = require('./mostradorDeTokens')
 const pastaDeSempre = require('./pastaDeSempre')
 const { criarVerHtml } = require('./verHtml')
+const { renomearAConversa } = require('./renomearConversa')
+const { criarMapaDosAgentes } = require('./mapaDosAgentes')
 const extensoesQueFaltam = require('./extensoesQueFaltam')
 const { criarTelaDoConsumo } = require('./telaDoConsumo')
 const ajustesDaOficial = require('./ajustesDaConversaOficial')
@@ -74,6 +76,7 @@ let mostradorDoLimite = null
 let faixaDoLimite = null
 /** V20 — o mostrador de tokens da barra de cima (t196). `null` até ele subir na ativação. */
 let mostradorDeTokens = null
+let mapaDosAgentes = null
 /** V20 — a tela que o expandir da faixa abre (t199). `null` até a ativação. */
 let telaDoConsumo = null
 
@@ -1774,6 +1777,9 @@ function registrarNavegador(context) {
     vscode.commands.registerCommand('oficina.navegador.ladoALado', () => navegador.ladoALado()),
     vscode.commands.registerCommand('oficina.html.verPagina', uri => verHtml.verPagina(uri)),
     vscode.commands.registerCommand('oficina.html.verCodigo', uri => verHtml.verCodigo(uri)),
+    // V30: renomear a conversa pelo menu da ABA — ponte para o comando da extensão oficial, que
+    // existe mas só está no botão direito DENTRO da conversa e na paleta (`renomearConversa.js`).
+    vscode.commands.registerCommand('oficina.conversa.renomear', () => renomearAConversa(vscode)),
     { dispose: () => navegador.descartar() })
   if (typeof w.onDidCloseBrowserTab === 'function') context.subscriptions.push(w.onDidCloseBrowserTab(aba => navegador.esquecerAba(aba)))
 }
@@ -1944,6 +1950,20 @@ function registrarFaixaETokens(context) {
   faixaDoLimite = criarFaixaDoLimite(vscode, { pastaDoCache })
   mostradorDeTokens = criarMostradorDeTokens(vscode)
   /*
+    V30 — O MAPA DOS AGENTES GANHA PORTA. Ele existe desde a V16, mas dentro do painel próprio
+    (`Ctrl+T`), que deixou de ser o caminho na V23 — ou seja, estava construído e invisível. O botão
+    da faixa (`BOTOES_DA_FAIXA`) chama o comando abaixo.
+
+    ⚠️ QUEM SABE DOS AGENTES É O MOSTRADOR, e por isso ele é a fonte: ele já mede TODAS as conversas
+    desta janela e cada medidor já traz os subagentes do disco. Um segundo leitor do mesmo disco
+    seria um segundo número para divergir do primeiro.
+  */
+  mapaDosAgentes = criarMapaDosAgentes(vscode, {
+    lerConversas: () => (mostradorDeTokens ? mostradorDeTokens.agentesPorConversa : []),
+    pastaDaExtensao: contextoDaExtensao.extensionUri,
+    anotar,
+  })
+  /*
     ⚠️ O DETALHE (o que o expandir da faixa abre) LÊ O CACHE AO VIVO ANTES DO REGISTRO LOCAL.
     O registro pode estar parado há quase uma hora — medido, 50 min com 13 pontos de diferença. Se
     a faixa mostra o número de agora e o detalhe abre com o de 50 minutos atrás, os dois se
@@ -1970,6 +1990,8 @@ function registrarFaixaETokens(context) {
     // um que só olha o manifesto. Clicar no mostrador abre o detalhe do gasto, que é o que se quer
     // ver quando se olha para um número de tokens.
     vscode.commands.registerCommand('oficina.tokensNaBarra', () => tentar('oficina.tokens.abrir')),
+    // V30: o segundo botão da faixa. Abre ao lado, sem roubar o foco de quem está escrevendo.
+    vscode.commands.registerCommand('oficina.agentes.mapa', () => mapaDosAgentes && mapaDosAgentes.abrir()),
     // ⚠️ O AJUSTE NA TELA DA OUTRA EXTENSÃO PRECISA DE PORTA DE VOLTA. Ele escreve um bloco de CSS
     // dentro do pacote dela; sem um comando que desfaça, a única saída seria editar arquivo na mão.
     // E o bloco sobrevive à desinstalação da OFICINA — razão a mais para a porta existir e ser
@@ -1983,6 +2005,7 @@ function registrarFaixaETokens(context) {
     vscode.commands.registerCommand('oficina.limite', () => abrirDetalheDoConsumo()),
     { dispose: () => { if (faixaDoLimite) { faixaDoLimite.descartar(); faixaDoLimite = null } } },
     { dispose: () => { if (mostradorDeTokens) { mostradorDeTokens.descartar(); mostradorDeTokens = null } } },
+    { dispose: () => { if (mapaDosAgentes) { mapaDosAgentes.descartar(); mapaDosAgentes = null } } },
     { dispose: () => { telaDoConsumo = null } },
   )
 
