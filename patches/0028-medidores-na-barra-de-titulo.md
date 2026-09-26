@@ -90,3 +90,14 @@ e a faixa volta a desenhar embaixo **com a barra de título exatamente como era 
 
 `titleBarGauges: true` em `product.json`. Sem ela, nada muda: a barra de título não oferece encaixe e a
 faixa fica onde sempre esteve.
+
+## Achado na máquina dele, depois de instalado (25/09/2026)
+
+- **Os limites foram para ANTES da logo.** Print dele: `5h ▬ 1%  7d ▬ 30%` e só depois a logo e os ícones —
+  *"ordem errada, é logo > icones > limites > barra pesquisa > contador tokens > botao windowns"*. A posição
+  na `.titlebar-left` é decidida pelo `order` do CSS (logo 1, menu 2, ícones 3 — o próprio 0022 avisa no
+  comentário), e o encaixe tinha ficado sem, ou seja, com 0. O `append` na ordem certa não servia de nada.
+  Conserto: `order: 4` no `.titlebar-gauges`. Medido na janela de desenvolvimento: logo 0–35, ícones 39–295,
+  limites 295–639, pesquisa 649–1172, direita 1182–1376.
+- **Por que a sonda não pegou:** ela media SE os limites estavam na barra, não ONDE. Agora a suíte
+  `abertura_como_ele_abre.mjs` cobra a ordem inteira; contra a V28 instalada, reprova.

@@ -2,6 +2,26 @@
 
 Todas as mudanças que importam, versão a versão. Datas em dd/mm/aaaa.
 
+## [v28] — 25/09/2026 — **a pasta não confiada não apaga mais a OFICINA**
+
+Um conserto, e grave: na v27, abrir uma pasta que o programa ainda não conhecia podia deixar a
+OFICINA **sem nada dela** — só dois ícones na barra, nenhuma conversa, nenhum contador.
+
+- **O que acontecia.** O núcleo do VS Code abre pasta desconhecida em **Modo Restrito**, e nesse modo
+  desliga as extensões que não declaram suporte a ele — inclusive a da própria OFICINA. Como a barra de
+  status vem escondida, nem o aviso "Restricted Mode" aparecia. Não era defeito novo da v27: as versões
+  anteriores faziam o mesmo numa pasta não confiada.
+- **O que mudou.** A OFICINA **não pergunta mais se você confia na pasta** (`security.workspace.trust.enabled`
+  sai desligado de fábrica). Toda pasta abre inteira.
+  ⚠️ *Custo:* essa pergunta era uma proteção do VS Code contra pasta baixada da internet — tarefas,
+  configurações e extensões dela rodam sem aviso. Na OFICINA o agente já age sem pedir aprovação (ver o
+  README), então a proteção não segurava o que mais importa; mas ela deixa de existir também para o resto.
+  Para religar: `"security.workspace.trust.enabled": true` nas suas configurações.
+- **A ordem da barra de cima.** Os limites de uso subiam para a barra **antes** da logo. Agora a ordem é
+  a pedida: logo, ícones, limites, pesquisa, contador de tokens e os botões da janela.
+- **Por que os testes não viram.** Todas as janelas de teste abriam com a confiança desligada. Agora uma
+  delas abre como você abre, e reprova se a OFICINA sumir.
+
 ## [v27] — 25/09/2026 — **ver o que você está fazendo, e nunca conversar sem pasta**
 
 A primeira versão pública desde a v25: ela leva também tudo o que está na v26, logo abaixo.

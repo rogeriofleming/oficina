@@ -192,10 +192,10 @@ index 00000000000..e2c3b9b24db
 +
 +export const titleBarGaugesSlot = new GaugesSlot();
 diff --git a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
-index f0180de32f3..e69d8cdf45c 100644
+index f0180de32f3..c0c266c2e57 100644
 --- a/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
 +++ b/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
-@@ -639,3 +639,114 @@
+@@ -639,3 +639,117 @@
  	align-items: center;
  	justify-content: center;
  }
@@ -232,6 +232,9 @@ index f0180de32f3..e69d8cdf45c 100644
 +	align-items: center;
 +	height: 100%;
 +	flex-shrink: 0;
++	/* A ordem na tela e a do `order`, nao a do DOM: a logo tem 1, o menu 2, os icones 3. Sem isto
++	   o encaixe ficava com 0 e ia para ANTES da logo (medido na V28 instalada, 25/09/2026). */
++	order: 4;
 +}
 +
 +.monaco-workbench .part.titlebar .titlebar-gauges .gauges-container {

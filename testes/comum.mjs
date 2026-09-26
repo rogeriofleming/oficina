@@ -483,13 +483,16 @@ export function instalarConversaOficial(area, { raiz = process.env.OFICINA_BUILD
 }
 
 export function argumentosDeTeste(projeto, area, opcoes = {}) {
-  const { pularBoasVindas = true } = opcoes
+  // `confiancaDesligada: false` abre como a pessoa abre. Toda janela de teste desligava a confianca da
+  // pasta, e por isso nenhuma viu o Modo Restrito apagar a extensao da OFICINA (25/09/2026, V27
+  // instalada: so dois icones na barra, nenhuma conversa). Ver `abertura_como_ele_abre.mjs`.
+  const { pularBoasVindas = true, confiancaDesligada = true } = opcoes
   return [
     projeto,
     '--user-data-dir=' + path.join(area, 'dados'),
     '--extensions-dir=' + path.join(area, 'extensoes'),
     ...(pularBoasVindas ? ['--skip-welcome'] : []),
-    '--skip-release-notes', '--disable-workspace-trust',
+    '--skip-release-notes', ...(confiancaDesligada ? ['--disable-workspace-trust'] : []),
     '--disable-updates', '--no-sandbox', '--disable-telemetry',
     // ⚠️ Idioma FIXO. Varios testes casam com texto da interface ("Modified",
     // "Untracked", nomes de comando). O Windows desta casa esta em pt-BR, e o idioma

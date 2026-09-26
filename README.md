@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/vers%C3%A3o-v27-EA792B?style=flat-square" alt="versão v27"></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/vers%C3%A3o-v28-EA792B?style=flat-square" alt="versão v28"></a>
   <img src="https://img.shields.io/badge/Windows-x64-6B7075?style=flat-square" alt="Windows x64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-6B7075?style=flat-square" alt="licença MIT"></a>
   <img src="https://img.shields.io/badge/telemetria-nenhuma-6B7075?style=flat-square" alt="sem telemetria">
@@ -87,7 +87,9 @@ desde a primeira mensagem.
 **Na prática:** numa pasta sua, é velocidade. Numa pasta que você apenas abriu para olhar
 — um repositório que você baixou, uma pasta de cliente, um pendrive — o agente lê os
 arquivos daquele projeto, e instrução escondida dentro deles pode virar comando executado.
-Não há, hoje, trava que limite o modo a pastas confiáveis.
+Não há, hoje, trava que limite o modo a pastas confiáveis — e, desde a v28, a OFICINA
+também não pergunta se você confia na pasta ao abri-la (o Modo Restrito do VS Code desligava a
+própria OFICINA). Para religar a pergunta: `"security.workspace.trust.enabled": true`.
 
 Para trabalhar com aprovação a cada passo, troque o modo no seletor da conversa. A mudança
 vale da próxima conversa em diante.

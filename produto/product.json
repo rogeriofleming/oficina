@@ -125,6 +125,7 @@
     "chat.titleBar.signIn.enabled": false,
     "chat.titleBar.openInAgentsWindow.enabled": false,
     "chat.disableAIFeatures": true,
+    "security.workspace.trust.enabled": false,
     "workbench.browser.showInTitleBar": false
   },
   "builtInExtensionsEnabledWithAutoUpdates": [],

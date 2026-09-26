@@ -90,6 +90,28 @@ instalador é gerado pela própria tarefa `gulp vscode-win32-x64-user-setup` do 
 Setup) — por usuário, sem pedir administrador. Ao lado do `.exe` sai um `.sha256.json` com o
 hash do arquivo exato que foi gerado; é ele que alimenta o manifesto de atualização.
 
+### A segunda edição sem segundo build
+
+Uma edição com canal de atualização (a que recebe `--equipe` e uma camada privada) difere da
+neutra só no produto embutido, nos checksums do `product.json` e nos arquivos da camada. Em vez de
+compilar de novo:
+
+```
+scripts\empacotar.bat                                   o instalador neutro, primeiro
+node scripts\virar_equipe.mjs <saída> <repo> <camada>   a mesma saída vira a outra edição
+scripts\empacotar.bat --equipe                          o segundo instalador
+```
+
+O script é estrito: só acrescenta ou troca chaves de texto do produto, exige que cada troca
+aconteça exatamente uma vez por arquivo, confere a conta dos checksums contra os da saída neutra
+antes de mexer, e aborta em qualquer caso que não conheça — aí o caminho é o build. Provado em
+25/09/2026 contra um build de verdade da outra edição, com `scripts\comparar_edicoes.mjs`: 10.660
+arquivos, todos iguais byte a byte, exceto um onde o minificador escolheu nomes de variável
+diferentes (varia entre dois builds quaisquer).
+
+⚠️ *Custo:* os mapas de código (`*.js.map`) ficam os da edição neutra. Eles só servem para depurar;
+na linha do produto, a posição que apontam fica deslocada.
+
 ## Publicar uma versão (canal de atualização)
 
 A OFICINA se atualiza sozinha lendo um manifesto de 5 campos num servidor (o contrato exato

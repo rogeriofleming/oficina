@@ -50,6 +50,10 @@ function rodarSuiteCara(arquivo, exe, tetoMs = 900000) {
   return {
     ok: ok && !!placar && placar.passou === true,
     total: placar ? placar.total : null,
+    // Criterio PULADO nao SUMIU: ele aparece no placar como pulado (nunca como OK). O "nenhum criterio
+    // sumiu" tem de somar os dois — a V28 deu vermelho ali com o criterio 6 da abertura pulado por falta
+    // de medidores no perfil de teste (26/09/2026).
+    pulados: placar && Array.isArray(placar.pulados) ? placar.pulados.length : 0,
     detalhe: placar ? `${placar.total} criterios; falhas: ${(placar.falhas || []).join(' | ') || 'nenhuma'}`
       : `nao li o placar${como ? ' (' + como + ')' : ''}`,
   }
@@ -1638,8 +1642,24 @@ const semComentarios = arquivo =>
     const r = rodarSuiteCara('abertura_v20.mjs', exe, 900000)
     checar('V20', 'a abertura no executavel (conversa aberta, barra em cima, faixa do limite)', r.ok, r.detalhe)
     const ABERTURA_V20 = 8
-    checar('V20', 'a abertura: nenhum criterio sumiu', r.total === ABERTURA_V20,
-      `${r.total === null ? 'sem placar' : r.total} (esperado ${ABERTURA_V20})`)
+    checar('V20', 'a abertura: nenhum criterio sumiu', r.total !== null && r.total + r.pulados === ABERTURA_V20,
+      `${r.total === null ? 'sem placar' : r.total}${r.pulados ? ` + ${r.pulados} pulado(s)` : ''} (esperado ${ABERTURA_V20})`)
+  }
+}
+
+// V28 — A ABERTURA COMO A PESSOA ABRE: confianca da pasta LIGADA (toda outra suite a desliga). A V27
+// instalada abriu em Modo Restrito e a extensao da OFICINA sumiu inteira; nenhum teste viu.
+{
+  const exe = process.argv[2] || acharExe()
+  if (!exe) {
+    checar('V28', 'a abertura com a confianca da pasta ligada (a extensao da OFICINA viva)', false, 'sem executavel')
+  } else {
+    const r = rodarSuiteCara('abertura_como_ele_abre.mjs', exe, 300000)
+    checar('V28', 'a abertura com a confianca da pasta ligada (a extensao da OFICINA viva)', r.ok, r.detalhe)
+    // 3 sempre + 1 (a ordem) quando os limites sobem para a barra; sem eles, o 4o e PULADO e o placar fica em 3.
+    const COMO_ELE_ABRE = [3, 4]
+    checar('V28', 'a abertura como ele abre: nenhum criterio sumiu', r.total !== null && COMO_ELE_ABRE.includes(r.total + r.pulados),
+      `${r.total === null ? 'sem placar' : r.total} (esperado ${COMO_ELE_ABRE.join(' ou ')})`)
   }
 }
 
