@@ -1,0 +1,104 @@
+diff --git a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+--- a/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -313,6 +313,63 @@ function oficinaTemRotuloVivo(action: IAction): action is MenuItemAction {
+ 	return OFICINA_PADRAO_DA_CHAVE.test(oficinaTituloCru(action));
+ }
+ 
++// --- OFICINA patch 0029: o rotulo vivo e desenhado EM PEDACOS, com as cores do painel de tokens.
++//
++// O dono usa um painel flutuante de tokens e quer a barra igual a ele: *"a principal diferenca e
++// um pouco da cor"*. Com `textContent` a linha inteira sai numa cor so. O texto continua vindo
++// inteiro do context key; aqui ele so e cortado nos separadores que quem escreve ja usa:
++// ` │ ` entre um item e outro, e dois espacos entre as partes de um item. Cada parte ganha a cor
++// do painel pelo formato: `$...` e o valor (claro e em negrito), numero com `k`/`M` sao os tokens
++// (mais apagado e menor), o resto e o nome (apagado). Texto sem separador nenhum sai numa parte
++// so, com a cor do nome: nada que ja existia muda de conteudo.
++//
++// ⚠️ As cores sao as do painel, que e escuro. Num tema claro elas ficariam apagadas demais; a
++// OFICINA hoje so tem tema escuro, e isto esta dito para quando tiver outro.
++const OFICINA_COR_DO_NOME = '#a8afb9';
++const OFICINA_COR_DO_VALOR = '#f2f4f6';
++const OFICINA_COR_DOS_TOKENS = '#949ba6';
++const OFICINA_COR_DO_RISCO = 'rgba(255, 255, 255, 0.28)';
++
++// ⚠️ OS ESPACOS FICAM NO TEXTO, e nao em margem. A primeira versao separava as partes com margem, e o
++// `textContent` do rotulo virou `nome$1.2469.6k` — o que leitor de tela e copiar/colar recebem, e o
++// que a regressao le. Com `white-space: pre` no rotulo, os dois espacos entre as partes aparecem
++// como estao (nao colapsam em um), e o texto do elemento e EXATAMENTE o que a extensao escreveu.
++function oficinaDesenharEmPedacos(alvo: HTMLElement, texto: string): void {
++	alvo.textContent = '';
++	alvo.style.whiteSpace = 'pre';
++	const doc = alvo.ownerDocument;
++	const itens = texto.split(' │ ');
++	itens.forEach((item, i) => {
++		if (i > 0) {
++			const risco = doc.createElement('span');
++			risco.textContent = ' │ ';
++			risco.style.color = OFICINA_COR_DO_RISCO;
++			alvo.appendChild(risco);
++		}
++		item.split(/( {2,})/).forEach(parte => {
++			if (!parte) {
++				return;
++			}
++			if (!parte.trim()) {
++				alvo.appendChild(doc.createTextNode(parte));
++				return;
++			}
++			const pedaco = doc.createElement('span');
++			pedaco.textContent = parte;
++			if (/^\$/.test(parte.trim())) {
++				pedaco.style.color = OFICINA_COR_DO_VALOR;
++				pedaco.style.fontWeight = '600';
++			} else if (/^[\d.,]+[kM]?(\/[\d.,]+[kM]?)?$/.test(parte.trim())) {
++				pedaco.style.color = OFICINA_COR_DOS_TOKENS;
++				pedaco.style.fontSize = '0.9em';
++			} else {
++				pedaco.style.color = OFICINA_COR_DO_NOME;
++			}
++			alvo.appendChild(pedaco);
++		});
++	});
++}
++
+ class OficinaLiveLabelActionViewItem extends MenuEntryActionViewItem {
+ 
+ 	private readonly aoMudarAChave = this._register(new MutableDisposable());
+@@ -374,7 +431,7 @@ class OficinaLiveLabelActionViewItem extends MenuEntryActionViewItem {
+ 
+ 	protected override updateLabel(): void {
+ 		if (this.options.label && this.label) {
+-			this.label.textContent = this.oficinaTextoVivo.split('\n')[0];
++			oficinaDesenharEmPedacos(this.label, this.oficinaTextoVivo.split('\n')[0]);
+ 		}
+ 	}
+ 
+@@ -1361,6 +1418,27 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 
+ 		this.barraDeIconesContainer.style.width = `${largura}px`;
+ 		barra.layout(largura, height);
++
++		// --- OFICINA patch 0029: a barra fica do tamanho do que ela DESENHOU.
++		//
++		// Fixado nao e desenhado: a barra pula o que nao tem vista ativa, e a conta acima reserva
++		// uma vaga para cada fixado mesmo assim. Medido em 26/09/2026 no perfil do dono: 8 icones
++		// na tela e uma reserva de ~12, um vao de ~130 px entre o ultimo icone e os medidores do
++		// limite. No perfil descartavel dos testes, 6 icones e 224 px reservados (uma vaga vazia).
++		// A reserva continua sendo a largura PEDIDA (e ela que nao deixa a conta ficar circular);
++		// depois do desenho, o conteiner encolhe ate o fim do ultimo item visivel.
++		const inicio = this.barraDeIconesContainer.getBoundingClientRect().left;
++		let fim = inicio;
++		for (const item of Array.from(this.barraDeIconesContainer.querySelectorAll('.action-item'))) {
++			const caixa = item.getBoundingClientRect();
++			if (caixa.width > 0) {
++				fim = Math.max(fim, caixa.right);
++			}
++		}
++		const desenhado = Math.ceil(fim - inicio);
++		if (desenhado > 0 && desenhado < largura) {
++			this.barraDeIconesContainer.style.width = `${desenhado}px`;
++		}
+ 	}
+ 
+ 	/**

@@ -155,7 +155,10 @@ const editor = (temExtensao = true, pasta = REPO) => ({
   const importantes = (A.CSS.match(/!important/g) || []).length
   const regras = (A.CSS.match(/\{/g) || []).length
   checar('7. `!important` só onde há regra, e nada além',
-    importantes === regras && regras >= 1, `${importantes} em ${regras} regras`)
+    // V29: a regra que esconde o cabecalho (historico + nova sessao) dispensa a flag de
+    // prioridade — especificidade 0,2,0 contra 0,1,0 do `.header_` dela, e vem depois no arquivo.
+    // O que o criterio protege continua: nenhuma flag a mais que o numero de regras.
+    importantes <= regras && regras >= 1, `${importantes} em ${regras} regras`)
   checar('8. o alvo é a extensão oficial, e nenhuma outra',
     A.EXTENSAO === 'anthropic.claude-code', A.EXTENSAO)
 }
@@ -208,9 +211,17 @@ const editor = (temExtensao = true, pasta = REPO) => ({
       // Busca LITERAL, sem expressão regular: no pacote, um `title` de verdade aparece como
       // `title:"..."` e um aria-label como `"aria-label":"..."`. Se a âncora não aparecer nessa
       // forma, ela não é atributo daquele elemento — foi esse o erro que custou o item.
-      const forma = a.attr === 'title'
+      // V29: o aria-label tambem chega ao elemento POR COMPONENTE — o botao de icone do
+      // pacote recebe `ariaLabel:"..."` e o repassa como `"aria-label"` (medido no `Ly1` da 2.1.278).
+      // Essa forma so vale se o pacote tiver um componente que faca o repasse; senao, `ariaLabel`
+      // poderia ser so uma prop que ninguem desenha.
+      const repassa = /\{[^{}]*ariaLabel:([A-Za-z_$][\w$]*)[^{}]*\}[\s\S]{0,400}?"aria-label":\1\b/.test(bundle)
+      const direta = a.attr === 'title'
         ? 'title:' + JSON.stringify(a.valor)
         : JSON.stringify('aria-label') + ':' + JSON.stringify(a.valor)
+      const porComponente = 'ariaLabel:' + JSON.stringify(a.valor)
+      const forma = a.attr === 'aria-label' && !bundle.includes(direta) && repassa && bundle.includes(porComponente)
+        ? porComponente : direta
       const achou = bundle.includes(forma)
       let quantas = 0
       for (let k = bundle.indexOf(forma); k !== -1; k = bundle.indexOf(forma, k + 1)) quantas++

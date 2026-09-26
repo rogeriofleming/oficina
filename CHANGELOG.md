@@ -2,6 +2,34 @@
 
 Todas as mudanças que importam, versão a versão. Datas em dd/mm/aaaa.
 
+## [v29] — 26/09/2026 — **o contador de tokens mostra cada conversa pelo nome**
+
+- **Todas as conversas da janela, cada uma com o nome.** Com mais de uma conversa aberta, o contador
+  da barra de cima listava só a conversa em uso e escrevia `+N` para as outras. Agora ele mostra todas,
+  lado a lado: `nome  $custo  tamanho │ nome  $custo  tamanho │ soma`. Quando não cabe, a linha encolhe
+  em degraus: primeiro sai o total processado de cada conversa, depois a soma, e só por último os nomes
+  ficam mais curtos. Tudo continua, por extenso, na dica do mouse.
+  ⚠️ *Limite:* a barra tem uns 410 px numa tela de 1360 px. Com quatro conversas de nome comprido,
+  aparecem o nome encurtado e o custo de cada uma, sem o tamanho.
+- **Conversa sem título agora tem nome.** O nome era só o título automático, e conversa que ainda não
+  tinha um aparecia só com os números. Agora vale, nesta ordem: o nome que você deu, o título
+  automático, o seu último pedido e, sem nada disso, o começo do identificador da conversa.
+- **Cores por parte.** O nome em cinza, o custo em branco e negrito, os tokens em cinza e menores, com
+  um traço entre uma conversa e outra. Antes era tudo numa cor só. ⚠️ *Limite:* as cores são pensadas
+  para tema escuro, o único que a OFICINA tem hoje.
+- **Sem vão entre os ícones e os limites.** A barra de ícones reservava lugar para vista fixada que
+  não aparece, o que deixava um espaço vazio antes dos limites de uso. Agora ela tem o tamanho dos
+  ícones que desenhou.
+- **Uma barra a menos acima da conversa.** A linha com o relógio de histórico e o `+` de nova sessão,
+  entre as abas e a conversa do Claude, não aparece mais. As abas levam direto à conversa.
+  ⚠️ *Custo:* esses dois botões saem dali. Nova conversa continua na paleta (`Ctrl+Shift+P`), no
+  comando **Claude Code: New Conversation**. O botão de histórico não tem substituto igual na extensão
+  do Claude Code; para voltar a uma conversa fechada há **Claude Code: Reopen Closed Session**.
+- **Como esta versão foi feita.** A v29 não foi recompilada do zero: as mudanças do núcleo foram
+  aplicadas no programa da v28 por troca exata de texto, cada uma conferida para casar uma única vez, e
+  o código-fonte delas está no patch `0029`. ⚠️ *Custo:* os mapas de depuração (`*.js.map`) são os da
+  v28 e apontam para posições deslocadas. Só servem para investigar erro; quem usa não percebe.
+
 ## [v28] — 25/09/2026 — **a pasta não confiada não apaga mais a OFICINA**
 
 Um conserto, e grave: na v27, abrir uma pasta que o programa ainda não conhecia podia deixar a

@@ -171,6 +171,8 @@ const SONDAS_FORA_DE_BATERIA = {
   // conserto possivel so ensina a ignorar a lista.
   'sonda_folga_da_barra.mjs': 'sonda de controle: mede a folga da barra de cima ao vivo',
   'sonda_limites_na_barra.mjs': 'sonda de medida (V27): cabem os medidores do limite na barra de cima, em tela cheia e meia tela',
+  'sonda_vao_da_barra.mjs': 'sonda de medida (V29): quem ocupa cada trecho da barra de cima, e a largura do bloco de icones contra o que ele desenhou',
+  'antes_do_longo.mjs': 'conferidor (V29): o que se prova em segundos ANTES de regressao ou empacotamento — ele RODA esta bateria, nao pertence a ela',
   'sonda_skills_na_barra.mjs': 'sonda de controle: conta os icones da barra de cima',
   'sonda_viabilidade_truncar.mjs': 'sonda de viabilidade: testa estilos candidatos antes do patch',
   'sonda_dom_da_barra.mjs': 'sonda de leitura: imprime o DOM da barra de cima para o seletor sair de medicao',

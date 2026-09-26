@@ -414,10 +414,12 @@ for (const [nome, r] of [['escuro', escuro], ['claro', claro]]) {
       // ⚠️ `m.itens === 1`, e não 4: o `t188` tirou os três botões (Arquivos, Conversa e Layout) da
       // barra de cima, e o mostrador ficou sozinho. A conta antiga é de antes da ordem dele.
       ? (m.real.quantos === 1 && m.itens === 1 &&
-        // V27: a forma do painel de tokens (`nome  $1.24  69.6k/1.0M`, com `[...] +N │ total` quando há
-        // várias), com o aviso de pasta na frente quando for o caso — ou um dos dois estados sem número.
-        // `$?` é custo desconhecido (`custoDe`, modelo ainda sem preço) — estado do motor, não defeito.
-        /^(⚠ sem pasta {2})?(– · [0?]|\[?(.+ {2})?\$(?:[\d.]+\+?|\?) {2}[\d.]+[kM]\/[\d.]+[kM]\]?( {2}\+\d+ {2}│ {2}\$(?:[\d.]+\+?|\?) {2}[\d.]+[kM]\/[\d.]+[kM])?)$/.test(m.real.rotulos[0]))
+        // V27: a forma do painel de tokens (`nome  $1.24  69.6k/1.0M`), com o aviso de pasta na frente
+        // quando for o caso — ou um dos dois estados sem número. `$?` é custo desconhecido (`custoDe`).
+        // V29: com várias, TODAS pelo nome, separadas por ` │ `, e a soma no fim; quando não cabe, cada
+        // conversa pode perder o tamanho (degraus do `mostradorDeTokens.js`). O texto do elemento é o da
+        // extensão, byte a byte: o 0029 desenha em pedaços, mas com os espaços DENTRO do texto.
+        /^(⚠ sem pasta {2})?(– · [0?]|(.+? {2})?\$(?:[\d.]+\+?|\?)( {2}[\d.]+[kM](\/[\d.]+[kM])?)?( │ (.+? {2})?\$(?:[\d.]+\+?|\?)( {2}[\d.]+[kM](\/[\d.]+[kM])?)?)*)$/.test(m.real.rotulos[0]))
       : (m.itens >= 3 && m.rotulos.length === 0),
     temPatch
       ? `${m.itens} itens na barra, ${m.real.quantos} com texto: "${m.real.rotulos.join(' | ')}" (${m.real.largura} px)`

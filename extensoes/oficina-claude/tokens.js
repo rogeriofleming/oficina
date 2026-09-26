@@ -155,6 +155,13 @@ function interpretarLinha(linha) {
   let o
   try { o = JSON.parse(linha) } catch { return null }
 
+  // V29 — o NOME, com a mesma regra do painel flutuante de tokens (ferramenta à parte,
+  // fora deste repositório): o título que ele deu, o automático, o último pedido. Sem a terceira, conversa sem
+  // título ("teste", "oi") aparecia só com os números, e ele não sabia qual era qual.
+  if (o.type === 'custom-title' && o.customTitle) return { rotulo: { custom: String(o.customTitle) } }
+  if (o.type === 'ai-title' && o.aiTitle) return { rotulo: { automatico: String(o.aiTitle) } }
+  if (o.type === 'last-prompt' && o.lastPrompt) return { rotulo: { ultimoPedido: String(o.lastPrompt) } }
+
   /*
     ⚠️ SKILL CHAMADA POR `/nome` NÃO PASSA PELA FERRAMENTA `Skill` (revisão de código, 16/09/2026). É o caminho
     do clique no painel de skills, e de quem digita o comando. O arquivo grava duas falas da pessoa: uma com
@@ -214,6 +221,7 @@ class MedidorDaConversa {
     this.nomesDeAgente = new Map()   // id da chamada -> descrição
     this.ligacoes = new Map()        // id da chamada -> id do arquivo do subagente
     this.contextoAgora = 0
+    this.rotulo = {}                 // { custom, automatico, ultimoPedido } — a última linha de cada tipo
     // V14 — o relógio do cache: só a conversa PRINCIPAL (subagente tem cache e relógio próprios).
     this.relogio = new RelogioDoCache({ agora })
     // V16 — por arquivo de subagente: a ficha (`.meta.json`) e o que o mapa dos agentes mostra de uma conversa
@@ -241,7 +249,7 @@ class MedidorDaConversa {
       if (leitor.reiniciou) {
         leitor.reiniciou = false
         for (const [id, r] of this.respostas) if (r.arquivo === arquivo) this.respostas.delete(id)
-        if (principal) { this.contextoAgora = 0; this.skills.clear(); this.skillsVistas.clear(); this.relogio.zerar() }
+        if (principal) { this.contextoAgora = 0; this.skills.clear(); this.skillsVistas.clear(); this.relogio.zerar(); this.rotulo = {} }
         else this.andamento.delete(arquivo)
         mudou = true
       }
@@ -270,6 +278,8 @@ class MedidorDaConversa {
           }
           if (r.resposta && !this.respostas.has(r.resposta.id)) and.ultimaResposta = r.resposta.id
         }
+        // Renomear ACRESCENTA outra linha: vale a última de cada tipo (igual ao painel).
+        if (r.rotulo) { if (principal) { Object.assign(this.rotulo, r.rotulo); mudou = true } continue }
         if (r.ligacao) { if (principal) this.ligacoes.set(r.ligacao.chamada, r.ligacao.agente); mudou = true; continue }
         // Skill por `/nome`: o comando fica pendente até a carga da skill chegar (ver `interpretarLinha`).
         if (r.comando !== undefined) { if (principal) this.comandoPendente = r.comando; continue }
@@ -314,6 +324,20 @@ class MedidorDaConversa {
       }
     }
     return mudou
+  }
+
+  /**
+   * O nome da conversa, na ordem do painel flutuante: o título dado por ele, o automático, o último
+   * pedido (cortado em 60) e, sem nada disso, o começo do id. `null` só antes da primeira leitura.
+   */
+  get nome() {
+    if (this.rotulo.custom) return this.rotulo.custom
+    if (this.rotulo.automatico) return this.rotulo.automatico
+    if (this.rotulo.ultimoPedido) {
+      const p = this.rotulo.ultimoPedido.replace(/\s+/g, ' ').trim()
+      if (p) return p.length > 60 ? p.slice(0, 60) + '…' : p
+    }
+    return path.basename(this.transcrito, '.jsonl').slice(0, 8)
   }
 
   /** Os números, prontos para a tela. */

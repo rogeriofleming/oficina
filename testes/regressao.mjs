@@ -964,7 +964,7 @@ const acharExeDoBuild = () => acharExe()
 // V14: tokens 31 -> 30 (os tres criterios dos modos da barra viraram um: nao ha modo que esconda);
 // tela_tokens 22 -> 32 (sai o modo da barra, entram a falta de configuracao, o pe e o relogio do cache).
 // V16: tokens 30 -> 38 (a ficha `.meta.json` do subagente: nome do segundo nivel, pai, e o que o mapa le do disco).
-const TOKENS = 38
+const TOKENS = 44 // V29: +6, o nome da conversa com a regra do painel (titulo dado, automatico, ultimo pedido, id)
 const TELA_TOKENS = 32
 // Piso da V11.
 // V18: 30 -> 77 (os tamanhos da conversa: guardar, restaurar, voltar ao padrao; o voltar ao padrao em tres fases, e o patch 0013).
@@ -1002,9 +1002,9 @@ const SESSAO_ATIVA = 20
 const PASTA_DE_SEMPRE = 24 // V27: sem pasta, nada de conversa automatica; abre a pasta de sempre ou pergunta
 const VER_HTML = 24 // V27: as duas opcoes de um .html -- ver a pagina e ver o codigo · +4: os leitores de documento embutidos (1b) · +4: celular e computador lado a lado (1c)
 const EXTENSOES_QUE_FALTAM = 21 // V27: a primeira abertura instala o que falta (Claude Code primeiro)
-const MOSTRADOR_DE_TOKENS = 50 // V24: 20 -> 23, os tres estados do mostrador (numeros, vazio, falhou) · V26-B2: 23 -> 26, sem pasta aberta procura na pasta pessoal · V27: 26 -> 42, formato do painel, conversas da janela pelo processo pai, aviso sem pasta
+const MOSTRADOR_DE_TOKENS = 52 // V29: 50 -> 52, todas as conversas pelo nome e os degraus quando nao cabe · V24: 20 -> 23, os tres estados do mostrador (numeros, vazio, falhou) · V26-B2: 23 -> 26, sem pasta aberta procura na pasta pessoal · V27: 26 -> 42, formato do painel, conversas da janela pelo processo pai, aviso sem pasta
 const TELA_DO_CONSUMO = 15
-const AJUSTES_DA_OFICIAL = 35 // V21: +8 (ancoras [class*=] e a derivacao dos modos)
+const AJUSTES_DA_OFICIAL = 38 // V29: +3, a ancora aria-label do cabecalho (2) e o nome-base header_ (1) · V21: +8 (ancoras [class*=] e a derivacao dos modos)
 // Pisos da V26 (24/09/2026): os MCPs e a conta — o estado de uma ferramenta de TERCEIRO, que e o
 // lugar onde este produto ja se enganou duas vezes (o mostrador que diria "0" quando a medicao
 // falhava, e o `/logout` que envelheceu junto com o CLI). Por isso os criterios que mais importam

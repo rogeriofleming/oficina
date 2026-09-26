@@ -12,13 +12,14 @@
 //
 //   antes (V20–V26):  Catálogo de skills · 195k · 13,3M · US$ 13,79* · cache 4m
 //   agora (V27):      Catálogo de skills  $13.79  195k/13.3M
-//   com mais de uma:  [Catálogo de skills  $13.79  195k/13.3M]  +3  │  $32.10  560k/40.2M
+//   com mais de uma (V29):  Catálogo skills  $13.79  195k │ teste  $0.07  48.1k │ $13.86
 //
 // ⚠️ O QUE NÃO FICOU IGUAL, E POR QUÊ — para ele decidir, não para passar calado:
-//   - o painel põe TODAS as conversas lado a lado; a barra de cima não tem essa largura (o painel
-//     chega a 5 conversas, ~1.000 px). Aqui vai a conversa em uso e as outras viram `+N`, com o
-//     total ao lado e cada uma, por extenso, na dica do mouse. O clique abre a vista Tokens, que é o
-//     `▾` do painel;
+//   - o painel põe TODAS as conversas lado a lado, e desde a V29 a barra também (até a V28
+//     era a em uso e `+N`). Mas a barra de cima tem ~410 px na tela dele, e o painel chega a
+//     ~1.000 px com 5 conversas: quando não cabe, a linha encolhe em degraus (`DEGRAUS`) e o nome é
+//     o último a ceder. Cada uma, por extenso, fica na dica do mouse. O clique abre a vista Tokens;
+//   - as CORES do painel vêm do núcleo (patch 0029), que corta esta linha nos separadores;
 //   - o relógio do cache SAIU da linha (fica só na dica): ele pediu o relógio no rodapé do chat, ao
 //     lado do modelo, onde a extensão oficial já o mostra — ver o comentário em `montarTexto`.
 //
@@ -101,19 +102,83 @@ function tokens(n) {
  * Nome curto, com a regra do painel: corta na palavra, nunca no meio, e tira palavra vazia
  * ("app", "de", "para"...) antes de cortar — o que distingue costuma estar no fim.
  */
-function nomeCurto(n) {
+function nomeCurto(n, teto = 20) {
   const limpo = (n || '').trim()
-  if (limpo.length <= 20) return limpo
+  if (limpo.length <= teto) return limpo
   const partes = limpo.split(/[\s/\-–—]+/).filter(Boolean)
   const uteis = partes.filter(p => !/^(app|de|da|do|the|e|em|para|pra|com|um|uma|projetos?)$/i.test(p))
   const base = (uteis.length ? uteis : partes).join(' ')
-  if (base.length <= 20) return base
+  if (base.length <= teto) return base
   let saida = ''
   for (const p of base.split(' ')) {
-    if ((saida + ' ' + p).trim().length > 20) break
+    if ((saida + ' ' + p).trim().length > teto) break
     saida = (saida + ' ' + p).trim()
   }
-  return (saida || base.slice(0, 19)) + '…'
+  return (saida || base.slice(0, teto - 1)) + '…'
+}
+
+/**
+ * Quantos caracteres cabem no contador da barra de cima, na tela dele (V29).
+ *
+ * ⚠️ MEDIDO, e filho de uma condição: o núcleo limita o rótulo a `30vw` (patch 0023) — 413 px na
+ * tela dele, de 1360 px — e a conta do 0028 tira os limites da barra de cima quando o rótulo pede
+ * mais do que isso. No print dele, `$0.07 48.1k/96.2k` (17 caracteres) ocupou 85 px: ~5 px por
+ * caractere. 78 caracteres ficam abaixo dos 413 px com folga para nome com letra larga. Mudou o
+ * teto do 0023 ou a tela, este número envelhece.
+ */
+const LIMITE_DA_LINHA = 78
+
+/**
+ * Os degraus, do formato inteiro do painel ao mais apertado. O NOME é o último a ceder: foi o que
+ * ele pediu (*"tem que ter o nome da sessão junto do lado"*). Antes dele saem o total processado
+ * de cada conversa e os tokens da soma — os dois continuam, por extenso, na dica do mouse.
+ */
+//
+// A SOMA sai antes do tamanho de cada conversa: o que ele quer ler é quanto CADA sessão gasta, e a
+// soma ele faz de cabeça (e ela está na dica).
+//
+// ⚠️ O CUSTO, MEDIDO NO TESTE (11d3): com QUATRO conversas de nome comprido, cabe nome encurtado e
+// o custo de cada uma, sem tamanho e sem soma. Para caber mais, o espaço tem de vir de outro lugar
+// da barra (medidores, pesquisa): decisão dele, não deste arquivo.
+const DEGRAUS = [
+  { teto: 20, porItem: 'ambos', total: 'ambos' },
+  { teto: 20, porItem: 'contexto', total: 'ambos' },
+  { teto: 20, porItem: 'contexto', total: 'custo' },
+  { teto: 14, porItem: 'contexto', total: 'custo' },
+  { teto: 14, porItem: 'contexto', total: 'nada' },
+  { teto: 10, porItem: 'contexto', total: 'nada' },
+  { teto: 14, porItem: 'nada', total: 'nada' },
+  { teto: 10, porItem: 'nada', total: 'nada' },
+  { teto: 7, porItem: 'nada', total: 'nada' },
+]
+
+/**
+ * A linha com TODAS as conversas da janela, como o painel flutuante: cada uma com nome, custo e
+ * tamanho, separadas por ` │ `, e a soma no fim. O separador e os dois espaços entre as partes são
+ * o contrato com o núcleo (patch 0029), que colore cada parte pelo formato.
+ *
+ * `itens`: [{ nome, resumo, falhou }], na ordem da janela (estável: não pula quando se troca de aba).
+ */
+function linhaDasConversas(itens, soma) {
+  const montar = d => {
+    const partes = itens.map(({ nome, resumo, falhou }) => {
+      const n = nome ? nomeCurto(nome, d.teto) : null
+      if (!resumo) return [n || 'conversa nova', falhou ? '?' : '–'].join('  ')
+      const tam = d.porItem === 'ambos' ? `${tokens(resumo.contextoAgora)}/${tokens(resumo.tokens)}`
+        : d.porItem === 'contexto' ? tokens(resumo.contextoAgora) : null
+      return [n, custoDe(resumo), tam].filter(Boolean).join('  ')
+    })
+    if (d.total === 'nada') return partes.join(' │ ')
+    const total = `${dinheiro(soma.custo)}${soma.marca}` +
+      (d.total === 'ambos' ? `  ${tokens(soma.contexto)}/${tokens(soma.tokens)}` : '')
+    return [...partes, total].join(' │ ')
+  }
+  for (const d of DEGRAUS) {
+    const linha = montar(d)
+    if (linha.length <= LIMITE_DA_LINHA) return linha
+  }
+  // Nem o degrau mais apertado coube: vai ele, e o núcleo corta com `…` (a dica tem tudo).
+  return montar(DEGRAUS[DEGRAUS.length - 1])
 }
 
 /** Custo como o painel, com `+` só quando falta preço de algum modelo (número incompleto). */
@@ -245,7 +310,15 @@ function criarMostradorDeTokens(vscode, {
    * O que a barra desenha: a primeira linha é o que se lê; o resto é a dica do mouse (patch 0016).
    */
   function montarTexto() {
-    const nomeDe = id => { const x = medidas.get(id); return x && x.transcrito ? lerTitulo(x.transcrito) : null }
+    // V29: o nome vem do MEDIDOR, que lê o arquivo inteiro e aplica a regra do painel (o
+    // título dado, o automático, o último pedido, o começo do id). Antes vinha só do `ai-title`, e
+    // conversa sem título ("teste") aparecia sem nome. `lerTitulo` fica como piso.
+    const nomeDe = id => {
+      const x = medidas.get(id)
+      if (!x) return null
+      const doMedidor = x.medidor && typeof x.medidor.nome === 'string' ? x.medidor.nome : null
+      return doMedidor || (x.transcrito ? lerTitulo(x.transcrito) : null)
+    }
     const sem = semPasta() && conversas.length ? AVISO_SEM_PASTA + '  ' : ''
 
     // Nenhuma conversa nesta janela: o estado vazio do t202 ("um risquinho e zero tokens").
@@ -302,7 +375,12 @@ function criarMostradorDeTokens(vscode, {
       const algumaFalhou = conversas.some(id => { const x = medidas.get(id); return x && x.falhou })
       const faltaPreco = medidas_.some(x => x.resumo.faltouPreco || x.resumo.custoUsd == null)
       const marca = algumaFalhou ? '?' : faltaPreco ? '+' : ''
-      linha = `[${linha}]  +${outras.length}  │  ${dinheiro(soma.custo)}${marca}  ${tokens(soma.contexto)}/${tokens(soma.tokens)}`
+      // V29: TODAS pelo nome, como o painel — antes era a em uso e `+N`. Ele: *"e se eu
+      // tiver com quatro sessões abertas? (...) tem que ter o nome da sessão junto do lado"*.
+      linha = linhaDasConversas(conversas.map(id => {
+        const x = medidas.get(id)
+        return { nome: nomeDe(id), resumo: x && x.resumo, falhou: !!(x && x.falhou) }
+      }), { ...soma, marca })
     }
     /*
       ⚠️ V27: O RELÓGIO DO CACHE SAIU DA LINHA (continua na dica do mouse). Ordem dele, 25/09/2026:
@@ -325,7 +403,7 @@ function criarMostradorDeTokens(vscode, {
       ...porConversa,
       '',
       outras.length
-        ? 'Na barra: [a conversa em uso]  +N = quantas outras  │  a soma de todas.'
+        ? 'Na barra: cada conversa desta janela (nome, custo, tamanho)  │  no fim, a soma de todas. Sem espaço, o total processado sai da linha e os nomes encurtam; aqui fica tudo.'
         : 'Na barra: o nome da conversa, o custo e os dois tamanhos.',
       '$ = custo em dólares (US$), uma estimativa: quanto isto custaria para quem paga por uso, pela tabela de',
       'preços da Anthropic. Na assinatura você não paga por token — o número serve para comparar o peso das conversas.',
@@ -391,5 +469,5 @@ const DICA_SEM_PASTA = [
 
 module.exports = {
   criarMostradorDeTokens, CHAVE_DO_TEXTO, CHAVE_DE_MOSTRAR, INTERVALO_MS, SEM_CONVERSA, SEM_MEDIDA,
-  AVISO_SEM_PASTA, dinheiro, tokens, nomeCurto, itemDoPainel,
+  AVISO_SEM_PASTA, dinheiro, tokens, nomeCurto, itemDoPainel, linhaDasConversas, LIMITE_DA_LINHA,
 }

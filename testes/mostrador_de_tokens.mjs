@@ -407,8 +407,21 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
   })
   m.tique()
   const texto = String(vs.chaves[M.CHAVE_DO_TEXTO] || '')
-  checar('11d. varias conversas: a em uso entre colchetes, `+N` e o total, como o painel',
-    texto.split('\n')[0] === '[Catálogo skills  $1.24  69.6k/1.0M]  +1  │  $2.00  100k/1.5M', texto.split('\n')[0])
+  // V29: TODAS pelo nome, como o painel. Inteiro, o formato daria 83 caracteres (mais que
+  // o LIMITE_DA_LINHA), entao desce um degrau: sai o total processado de cada uma, o nome fica.
+  checar('11d. varias conversas: TODAS pelo nome, separadas por │, e a soma no fim',
+    texto.split('\n')[0] === 'Catálogo skills  $1.24  69.6k │ Outra  $0.76  30.4k │ $2.00  100k/1.5M', texto.split('\n')[0])
+  checar('11d2. cabendo, vai o formato inteiro do painel',
+    M.linhaDasConversas([{ nome: 'A', resumo: resumoDe(1000, 2000, 1) }, { nome: 'B', resumo: resumoDe(3000, 4000, 2) }],
+      { custo: 3, contexto: 4000, tokens: 6000, marca: '' }) === 'A  $1.00  1.0k/2.0k │ B  $2.00  3.0k/4.0k │ $3.00  4.0k/6.0k')
+  {
+    const quatro = ['Hotmart pagamentos recalculado', 'V29 design inconsistências', 'teste', 'Catálogo de skills com auditoria']
+      .map((nome, i) => ({ nome, resumo: resumoDe(197000 + i, 9300000 + i, 7.17 + i) }))
+    const l = M.linhaDasConversas(quatro, { custo: 40, contexto: 800000, tokens: 37000000, marca: '' })
+    checar('11d3. quatro conversas de nome comprido: cabe no limite e TODAS continuam com nome e custo',
+      l.length <= M.LIMITE_DA_LINHA && l.split(' │ ').length >= 4 &&
+      l.split(' │ ').slice(0, 4).every(p => /^[^$\s]/.test(p) && /\$\d/.test(p)), l)
+  }
   checar('11e. e a dica lista cada conversa, marcando a em uso',
     /▸ Catálogo skills: \$1\.24/.test(texto) && /  Outra: \$0\.76/.test(texto), texto)
 }
@@ -438,7 +451,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     resumos: { 'd:/velha.jsonl': resumoDe(100000, 5000000, 30) },
   })
   checar('13a. conversa nova ao lado de uma medida: a barra NAO diz "nenhuma conversa" e mostra a soma',
-    t.split('\n')[0] === '[conversa nova  –]  +1  │  $30.00  100k/5.0M' && !/nenhuma conversa/.test(t), t.split('\n')[0])
+    t.split('\n')[0] === 'Velha  $30.00  100k/5.0M │ conversa nova  – │ $30.00  100k/5.0M' && !/nenhuma conversa/.test(t), t.split('\n')[0])
   // 13b — conversa registrada sem arquivo, sozinha: estado vazio, mas a dica NAO diz "nenhuma conversa"
   const t2 = montarJanela({ sessoes: [reg(2, 'nova')], transcritos: {}, resumos: {} })
   checar('13b. conversa que acabou de nascer: `– · 0`, e a dica diz que ela comecou (nao "nenhuma conversa")',
@@ -453,7 +466,7 @@ checar('cadência: 3 s, a mesma da vista de tokens da V10', M.INTERVALO_MS === 3
     resumos: { 'd:/velha.jsonl': resumoDe(100000, 5000000, 30), 'd:/nova.jsonl': resumoDe(1, 1, 1) },
     falha: tr => tr.includes('nova'),
   })
-  checar('13d. uma conversa falhou: o total leva `?` (a soma esta incompleta)', /│ {2}\$30\.00\? /.test(t3.split('\n')[0]), t3.split('\n')[0])
+  checar('13d. uma conversa falhou: o total leva `?` (a soma esta incompleta)', /│ \$30\.00\?( |$)/.test(t3.split('\n')[0]), t3.split('\n')[0])
 }
 
 // ── 12 ── a consulta dos pais nao grava "sem pai" por causa de uma falha

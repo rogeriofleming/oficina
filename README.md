@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="../../releases"><img src="https://img.shields.io/badge/vers%C3%A3o-v28-EA792B?style=flat-square" alt="versão v28"></a>
+  <a href="../../releases"><img src="https://img.shields.io/badge/vers%C3%A3o-v29-EA792B?style=flat-square" alt="versão v29"></a>
   <img src="https://img.shields.io/badge/Windows-x64-6B7075?style=flat-square" alt="Windows x64">
   <a href="LICENSE"><img src="https://img.shields.io/badge/licen%C3%A7a-MIT-6B7075?style=flat-square" alt="licença MIT"></a>
   <img src="https://img.shields.io/badge/telemetria-nenhuma-6B7075?style=flat-square" alt="sem telemetria">

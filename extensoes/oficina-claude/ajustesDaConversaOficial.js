@@ -66,6 +66,14 @@ button[title="Add"] { display: none !important; }
    e tirar funcao que ele nao pediu e a mesma classe de defeito que fez o patch 0019 existir. */
 [class*="titleGroup_"] { display: none !important; }
 
+/* V29 - ele: "nao e para ter essa terceira barra antes de chegar na conversa" (a barra do
+   relogio de historico e do "+" de nova sessao, abaixo das abas). Medido no bundle 2.1.278: o
+   cabecalho so contem o titleGroup (ja escondido acima), o espacador e os botoes "Learn Claude
+   Code", "Session history" e "New session" - nada mais. Ancora pelo aria-label do botao, e nao pela
+   classe: ha doze classes header_ diferentes no pacote. Sem flag de prioridade: o seletor tem
+   especificidade 0,2,0 contra 0,1,0 do .header_ dela e vem depois no arquivo, entao ja vence. */
+[class*="header_"]:has(> [aria-label="Session history"]) { display: none; }
+
 /* t200 - ele: "tem como esse bloco de digitacao do chat ficar praticamente mas nao literalmente
    grudado no fundo?". MEDIDO E PROVADO POR EXPERIMENTO na webview montada (22/09/2026): o bloco
    e position:absolute com bottom:16px; zerar o bottom levou o vao a 0, e mexer no padding do pai

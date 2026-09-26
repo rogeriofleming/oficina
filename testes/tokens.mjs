@@ -97,6 +97,30 @@ try {
     mc.atualizar()
     checar('tokens: reler o arquivo não conta a mesma skill duas vezes', mc.resumo().skills.map(s => `${s.nome}x${s.vezes}`).join() === 'minha-skillx1')
   }
+  // ⚠️ O NOME DA CONVERSA (V29), com a regra do painel flutuante: o título dado, o automático,
+  // o último pedido, o começo do id. Formato das linhas lido nas conversas desta máquina (26/09/2026):
+  // a conversa "teste" dele não tinha `ai-title`, só `last-prompt` — e a barra a mostrava sem nome.
+  {
+    const nomeDe = (linhas, arquivo = 'nome-' + Math.random().toString(36).slice(2) + '.jsonl') => {
+      const p = path.join(pasta, arquivo)
+      fs.writeFileSync(p, linhas.map(L).join('') + resposta('rn', { input_tokens: 1, output_tokens: 1 }))
+      const med = new T.MedidorDaConversa(p, { listarSubagentes: () => [] })
+      med.atualizar()
+      return med.nome
+    }
+    checar('⛔ tokens: sem título, o nome é o último pedido (o caso "teste" dele)',
+      nomeDe([{ type: 'last-prompt', lastPrompt: 'oi' }, { type: 'last-prompt', lastPrompt: 'teste' }]) === 'teste')
+    checar('tokens: o título automático vence o último pedido',
+      nomeDe([{ type: 'last-prompt', lastPrompt: 'teste' }, { type: 'ai-title', aiTitle: 'V29' }]) === 'V29')
+    checar('tokens: o título que ele deu vence o automático, mesmo escrito ANTES',
+      nomeDe([{ type: 'custom-title', customTitle: 'Meu nome' }, { type: 'ai-title', aiTitle: 'Automático' }]) === 'Meu nome')
+    checar('tokens: renomear de novo vale a ÚLTIMA linha',
+      nomeDe([{ type: 'ai-title', aiTitle: 'Primeiro' }, { type: 'ai-title', aiTitle: 'Segundo' }]) === 'Segundo')
+    checar('tokens: último pedido comprido é cortado em 60, com espaço normalizado',
+      nomeDe([{ type: 'last-prompt', lastPrompt: 'a'.repeat(30) + '\n\n' + 'b'.repeat(40) }]) === 'a'.repeat(30) + ' ' + 'b'.repeat(29) + '…')
+    checar('tokens: sem nada, o começo do id (igual ao painel)',
+      nomeDe([], 'abcdef12-0000-0000-0000-000000000000.jsonl') === 'abcdef12')
+  }
   checar('tokens: o custo é marcado como estimativa, com a data da tabela', r.estimado === true && r.tabelaDe === precos.ATUALIZADA_EM)
 
   // O custo tem que ser o da tabela única, e não uma conta própria.
